@@ -1,3 +1,6 @@
 # 插件系统所需的 GOPATH src 符号链接（由 loader 自动管理）
-*catcode*
+.catcode
+*.zip
+*.ico
+cmd/catcode/scripts
 vendor*
