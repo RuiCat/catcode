@@ -1,0 +1,49 @@
+{
+    "model": "deepseek:deepseek-chat",
+    "small_model": "deepseek:deepseek-chat",
+    "default_agent": "architect",
+    "providers": {
+        "deepseek": {
+            "name": "DeepSeek",
+            "base_url": "https://api.deepseek.com/v1",
+            "api_key": "",
+            "models": {
+                "deepseek-chat": {
+                    "name": "DeepSeek V3",
+                    "limit": { "context": 65536, "output": 8192 }
+                },
+                "deepseek-reasoner": {
+                    "name": "DeepSeek R1",
+                    "limit": { "context": 65536, "output": 8192 }
+                },
+                "deepseek-v4-pro": {
+                    "name": "DeepSeek V4 Pro",
+                    "limit": { "context": 1048576, "output": 65536 }
+                },
+                "deepseek-v4-flash": {
+                    "name": "DeepSeek V4 Flash",
+                    "limit": { "context": 131072, "output": 4096 }
+                }
+            }
+        }
+    },
+    "agents": {
+        "architect": {
+            "mode": "primary",
+            "temperature": 0.1,
+            "color": "#FF6B35"
+        }
+    },
+    "tui": {
+        "theme": "dark",
+        "chat_ratio": 0.6
+    },
+    "session": {
+        "max_messages": 100,
+        "compress_threshold": 80000,
+        "save_on_exit": true
+    },
+    "tool": {
+        "max_result_length": 4000
+    }
+}

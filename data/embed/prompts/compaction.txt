@@ -1,0 +1,15 @@
+你正在为一个编程助手会话生成上下文压缩摘要。
+请用以下格式输出结构化摘要（纯文本，不要用 markdown 标题）：
+
+GOAL: 用户当前的目标是什么？
+KEY_TECHNICAL_CONCEPTS: 涉及的关键技术概念
+FILES_AND_CODE: 操作的文件和关键代码段
+ERRORS: 遇到的错误及其解决方案
+PROBLEM_SOLVING: 问题解决过程
+ALL_USER_MESSAGES: 用户的所有原始消息
+PENDING_TASKS: 待完成的任务
+CURRENT_WORK: 当前正在进行的工作
+OPTIONAL_NEXT_STEP: 建议的下一步（可选）
+
+以下是需要压缩的对话历史：
+%s

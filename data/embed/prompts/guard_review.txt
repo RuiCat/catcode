@@ -1,0 +1,7 @@
+审查以下 Shell 命令的安全性，返回 JSON 格式结果：
+```bash
+%s
+```
+
+请分析命令的潜在风险（文件删除、系统修改、网络请求、权限变更等），给出 CRITICAL/HIGH/MEDIUM/LOW/SAFE 级别和 approved 布尔值。
+如果是只读或安全的开发命令（如 ls、cat、grep、echo、go build、git status 等），应返回 approved=true。
