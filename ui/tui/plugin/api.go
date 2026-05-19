@@ -1,37 +1,87 @@
+// Package plugin 实现 catcode TUI 插件 API
+// 插件可通过此 API 动态注册侧边栏标签并更新内容
 package plugin
 
-// NOTE: UIAPI 接口已定义但尚无实现，也未集成到主 TUI 代码中。
-// 这是 v0.9.2 ARCHITECTURE.md 规划的插件 TUI API，
-// 插件可通过此接口添加侧边栏标签、弹出对话框、追加聊天内容等。
-// 计划在未来版本中实现。
-
 import (
-	"time"
+	"fmt"
+	"sync"
 
-	"catcode/tool"
+	"catcode/ui/tui/component"
 )
 
 // UIAPI 插件界面接口
 // 插件通过此接口与 TUI 交互，无需直接操作 TUI 内部状态
 type UIAPI interface {
-	// RegisterSidebarTab 注册自定义侧边栏 Tab
-	RegisterSidebarTab(title string, render func(width int) string) error
+	// RegisterSidebarTab 注册自定义侧边栏 Tab，返回更新内容的通道
+	RegisterSidebarTab(key string, title string) (updateCh chan<- string, err error)
 
 	// UnregisterSidebarTab 注销侧边栏 Tab
-	UnregisterSidebarTab(title string) error
+	UnregisterSidebarTab(key string) error
 
-	// ShowQuestion 显示选项对话框，返回用户回答的 channel
-	ShowQuestion(questions []tool.QuestionInfo) <-chan tool.QuestionAnswer
+	// GetPanels 获取所有已注册的插件面板（用于侧边栏轮询渲染）
+	GetPanels() map[string]component.PluginPanelEntry
+}
 
-	// ShowConfirm 显示确认对话框
-	ShowConfirm(message string) <-chan bool
+// uiAPIImpl UIAPI 的具体实现
+type uiAPIImpl struct {
+	mu     sync.RWMutex
+	panels map[string]*panelState
+}
 
-	// AppendToChat 向聊天区追加内容
-	AppendToChat(content string)
+type panelState struct {
+	info   component.PluginPanelEntry
+	update chan string
+}
 
-	// ShowNotification 显示通知
-	ShowNotification(message string, level string, duration time.Duration)
+// NewUIAPI 创建 UIAPI 实例
+func NewUIAPI() UIAPI {
+	return &uiAPIImpl{
+		panels: make(map[string]*panelState),
+	}
+}
 
-	// SetStatus 设置状态栏键值
-	SetStatus(key, value string)
+func (u *uiAPIImpl) RegisterSidebarTab(key string, title string) (chan<- string, error) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+
+	if _, exists := u.panels[key]; exists {
+		return nil, fmt.Errorf("panel %q already registered", key)
+	}
+
+	ch := make(chan string, 1)
+	u.panels[key] = &panelState{
+		info:   component.PluginPanelEntry{Key: key, Title: title},
+		update: ch,
+	}
+	return ch, nil
+}
+
+func (u *uiAPIImpl) UnregisterSidebarTab(key string) error {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+
+	state, exists := u.panels[key]
+	if !exists {
+		return nil // 幂等
+	}
+	close(state.update)
+	delete(u.panels, key)
+	return nil
+}
+
+func (u *uiAPIImpl) GetPanels() map[string]component.PluginPanelEntry {
+	u.mu.RLock()
+	defer u.mu.RUnlock()
+
+	result := make(map[string]component.PluginPanelEntry, len(u.panels))
+	for k, s := range u.panels {
+		// 非阻塞读取最新内容
+		select {
+		case content := <-s.update:
+			s.info.Content = content
+		default:
+		}
+		result[k] = s.info
+	}
+	return result
 }

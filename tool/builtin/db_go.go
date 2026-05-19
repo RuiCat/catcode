@@ -2,8 +2,8 @@ package builtin
 
 import (
 	"fmt"
-	"strings"
 	"reflect"
+	"strings"
 
 	cerr "catcode/core/errors"
 	"catcode/data/storage"

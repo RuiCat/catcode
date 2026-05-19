@@ -1,6 +1,6 @@
 # catcode 架构总览
 
-> 精简自 [ARCHITECTURE.md](../ARCHITECTURE.md) v0.9.2 | 2026-05-16
+> 精简自 [ARCHITECTURE.md](../ARCHITECTURE.md) v0.9.3 | 2026-05-16
 
 ---
 

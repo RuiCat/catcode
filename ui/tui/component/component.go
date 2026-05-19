@@ -8,12 +8,14 @@ import tea "github.com/charmbracelet/bubbletea"
 
 // Rect 屏幕矩形区域
 type Rect struct{ X, Y, Width, Height int }
+
 func (r Rect) Contains(col, row int) bool {
 	return col >= r.X && col < r.X+r.Width && row >= r.Y && row < r.Y+r.Height
 }
 
 // MessageType 消息类型
 type MessageType int
+
 const (
 	MsgUser MessageType = iota
 	MsgAssistant
@@ -67,13 +69,20 @@ type LogEntry struct {
 
 type AgentEntry struct {
 	Name, Status, Task string
-	ToolCount int
-	FullOutput string
+	ToolCount          int
+	FullOutput         string
+}
+
+// PluginPanelEntry 插件侧边栏面板条目
+type PluginPanelEntry struct {
+	Key     string
+	Title   string
+	Content string
 }
 
 type SessionInfo struct {
 	ID, Title string
-	MsgCount int
+	MsgCount  int
 }
 
 // Deprecated: QuestionInfo 使用简化字段（Header/Options []string），与主代码中
@@ -99,12 +108,12 @@ func NewBaseComponent(name string) BaseComponent {
 	return BaseComponent{name: name, visible: true}
 }
 
-func (b *BaseComponent) Name() string                              { return b.name }
-func (b *BaseComponent) Focused() bool                             { return b.focused }
-func (b *BaseComponent) Focus() tea.Cmd                            { b.focused = true; return nil }
-func (b *BaseComponent) Blur()                                     { b.focused = false }
+func (b *BaseComponent) Name() string                                 { return b.name }
+func (b *BaseComponent) Focused() bool                                { return b.focused }
+func (b *BaseComponent) Focus() tea.Cmd                               { b.focused = true; return nil }
+func (b *BaseComponent) Blur()                                        { b.focused = false }
 func (b *BaseComponent) HandleMouse(msg tea.MouseMsg) (bool, tea.Cmd) { return false, nil }
-func (b *BaseComponent) Bounds() Rect                              { return b.bounds }
-func (b *BaseComponent) SetBounds(r Rect)                          { b.bounds = r }
-func (b *BaseComponent) Visible() bool                             { return b.visible }
-func (b *BaseComponent) SetVisible(v bool)                         { b.visible = v }
+func (b *BaseComponent) Bounds() Rect                                 { return b.bounds }
+func (b *BaseComponent) SetBounds(r Rect)                             { b.bounds = r }
+func (b *BaseComponent) Visible() bool                                { return b.visible }
+func (b *BaseComponent) SetVisible(v bool)                            { b.visible = v }

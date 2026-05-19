@@ -1,7 +1,7 @@
 # 🐱 catcode — TUI AI 辅助编程工具
 
 > 纯 Go、工作区隔离、主/子智能体协作的 TUI AI 辅助编程工具  
-> 版本: v0.9.2 | [架构设计文档](ARCHITECTURE.md)
+> 版本: v0.9.3 | [架构设计文档](ARCHITECTURE.md)
 
 ---
 

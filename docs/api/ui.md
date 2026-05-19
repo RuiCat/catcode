@@ -403,22 +403,54 @@ type ChatMessage struct {
 
 ---
 
-### `type SidebarTab int`
+### `type TabKey = string`
 
-侧边栏面板类型。
+侧边栏标签唯一标识（字符串类型别名）。内置 Tab 键名：
 
 | 常量 | 值 | 显示名 | 快捷键 |
 |------|-----|-------|--------|
-| `TabPlan` | `0` | `"📋 规划"` | F1 |
-| `TabLog` | `1` | `"📜 日志"` | F2 |
-| `TabAgents` | `2` | `"🤖 智能体"` | F3 |
-| `TabCompanion` | `4` | `"🐱 猫猫"` | F5 |
-| `TabTasks` | `5` | `"⏰ 任务"` | F6 |
-| `TabSession` | `3` | `"💾 会话"` | F4 |
+| `TabPlan` | `"plan"` | `"📋 规划"` | F1 |
+| `TabLog` | `"log"` | `"📜 日志"` | F2 |
+| `TabAgents` | `"agents"` | `"🤖 智能体"` | F3 |
+| `TabSession` | `"session"` | `"💾 会话"` | F4 |
+| `TabCompanion` | `"companion"` | `"🐱 猫猫"` | F5 |
+| `TabTasks` | `"tasks"` | `"⏰ 任务"` | F6 |
 
-**方法**：
-- `(t SidebarTab) String() string` — 返回面板显示名
-- `(t SidebarTab) Shortcut() string` — 返回快捷键
+### `type TabDef struct`
+
+```go
+type TabDef struct {
+    Key      TabKey
+    Title    string
+    Shortcut string
+    Builtin  bool
+    Render   func(m *Model, sb *strings.Builder)
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `Key` | `TabKey` | 唯一标识键 |
+| `Title` | `string` | 显示标题 |
+| `Shortcut` | `string` | 快捷键 |
+| `Builtin` | `bool` | 是否内置 Tab |
+| `Render` | `func` | 渲染函数 |
+
+### `type PluginPanel struct`
+
+```go
+type PluginPanel struct {
+    Key     string
+    Title   string
+    Content string
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `Key` | `string` | 面板唯一键（与 TabKey 对应） |
+| `Title` | `string` | 面板标题 |
+| `Content` | `string` | 面板内容（Markdown） |
 
 ---
 
@@ -1378,25 +1410,19 @@ type UIManager struct {
 
 ```
 type UIAPI interface {
-    RegisterSidebarTab(title string, render func(width int) string) error
-    UnregisterSidebarTab(title string) error
-    ShowQuestion(questions []tool.QuestionInfo) <-chan tool.QuestionAnswer
-    ShowConfirm(message string) <-chan bool
-    AppendToChat(content string)
-    ShowNotification(message string, level string, duration time.Duration)
-    SetStatus(key, value string)
+    RegisterSidebarTab(key string, title string) (updateCh chan<- string, err error)
+    UnregisterSidebarTab(key string) error
+    GetPanels() map[string]PanelInfo
 }
 ```
 
 | 方法 | 说明 |
 |------|------|
-| `RegisterSidebarTab(title, render)` | 注册自定义侧边栏面板 |
-| `UnregisterSidebarTab(title)` | 注销自定义侧边栏面板 |
-| `ShowQuestion(questions)` | 显示选项对话框，返回回答 channel |
-| `ShowConfirm(message)` | 显示确认对话框，返回确认 channel |
-| `AppendToChat(content)` | 向聊天区追加内容 |
-| `ShowNotification(message, level, duration)` | 显示通知 |
-| `SetStatus(key, value)` | 设置状态栏键值 |
+| `RegisterSidebarTab(key, title)` | 注册自定义侧边栏面板，返回更新通道 |
+| `UnregisterSidebarTab(key)` | 注销自定义侧边栏面板 |
+| `GetPanels()` | 获取所有已注册插件面板 |
+
+> ✅ 已实现 (v0.9.3)
 
 ---
 

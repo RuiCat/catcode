@@ -23,6 +23,7 @@ import (
 	"catcode/schedule"
 	"catcode/tool/builtin"
 	"catcode/ui/tui"
+	uiPlugin "catcode/ui/tui/plugin"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -42,6 +43,7 @@ type Application struct {
 	Scheduler     *schedule.Scheduler
 	PluginMgr     *plugin.Manager
 	McpMgr        *mcp.Manager
+	UIAPI         uiPlugin.UIAPI
 	WorkDir       string
 	TUIProgram    *tea.Program
 	TUIModel      *tui.Model
@@ -241,7 +243,8 @@ func main() {
 	arch.SetPlanEngine(app.PlanEngine)
 
 	// 8.1 加载插件（.catcode/plugins/）
-	pluginCtx := &plugin.PluginContext{WorkDir: workDir, Bus: app.Bus}
+	app.UIAPI = uiPlugin.NewUIAPI()
+	pluginCtx := &plugin.PluginContext{WorkDir: workDir, Bus: app.Bus, UI: app.UIAPI}
 	app.PluginMgr = plugin.NewManager(filepath.Join(workDir, ".catcode", "plugins"), pluginCtx)
 	if plugins, err := app.PluginMgr.LoadAll(); err == nil && len(plugins) > 0 {
 		for _, p := range plugins {

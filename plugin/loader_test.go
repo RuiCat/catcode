@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"catcode/core/event"
+	uiPlugin "catcode/ui/tui/plugin"
 )
 
 // TestLoader_Discover 测试插件发现功能
@@ -278,5 +279,60 @@ func TestManager_LoadAll_NonExistentDir(t *testing.T) {
 	}
 	if plugins != nil {
 		t.Fatalf("期望 nil，得到 %v", plugins)
+	}
+}
+
+// TestPluginWrapper_Setuppanel 测试面板注册和通道注入
+func TestPluginWrapper_Setuppanel(t *testing.T) {
+	tmpDir := t.TempDir()
+	uiAPI := uiPlugin.NewUIAPI()
+	ctx := &PluginContext{WorkDir: tmpDir, Bus: event.NewBus(), UI: uiAPI}
+	loader := NewLoader(tmpDir, ctx)
+
+	// 插件有 panelCh 字段
+	pluginContent := `package main
+
+import (
+	"catcode/tool"
+)
+
+type PanelPlugin struct {
+	panelCh chan<- string
+}
+
+func (p *PanelPlugin) Name() string    { return "panel-test" }
+func (p *PanelPlugin) Version() string { return "1.0.0" }
+func (p *PanelPlugin) Tools(bus interface{}) []*tool.Tool { return nil }
+
+var Plugin PanelPlugin
+`
+
+	pluginPath := filepath.Join(tmpDir, "panel_plugin.go")
+	if err := os.WriteFile(pluginPath, []byte(pluginContent), 0644); err != nil {
+		t.Fatalf("写入插件文件失败: %v", err)
+	}
+
+	p, err := loader.Load(pluginPath)
+	if err != nil {
+		t.Fatalf("加载插件失败: %v", err)
+	}
+
+	pw, ok := p.(*pluginWrapper)
+	if !ok {
+		t.Fatal("不是 pluginWrapper")
+	}
+
+	// 调用 Setuppanel
+	pw.SetupPanel()
+
+	// 验证面板已注册
+	panels := uiAPI.GetPanels()
+	if _, ok := panels["panel-test"]; !ok {
+		t.Error("面板未注册到 UIAPI")
+	}
+
+	// 验证 panelCh 已被设置到 wrapper 上
+	if pw.panelCh == nil {
+		t.Error("wrapper.panelCh 未设置 - SetupPanel 可能未正确注册面板")
 	}
 }

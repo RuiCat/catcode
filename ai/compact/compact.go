@@ -39,7 +39,6 @@ const (
 
 	// MicroKeepTools 微压缩保留的工具输出条数
 	MicroKeepTools = 6
-
 )
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -465,8 +464,7 @@ func PruneToolOutputs(sess *session.Session) {
 		content := msg.Content
 
 		// 关键信息检测：保留包含错误/警告的输出
-		isCritical := len(content) > 0 && (
-			strings.Contains(content, "error") ||
+		isCritical := len(content) > 0 && (strings.Contains(content, "error") ||
 			strings.Contains(content, "Error") ||
 			strings.Contains(content, "失败") ||
 			strings.Contains(content, "拒绝") ||

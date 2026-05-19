@@ -1,8 +1,8 @@
 package builtin
 
 import (
-	cerr "catcode/core/errors"
 	"catcode/agent/plan"
+	cerr "catcode/core/errors"
 	"catcode/tool"
 )
 

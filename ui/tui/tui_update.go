@@ -2,9 +2,9 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"strings"
 )
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -49,8 +49,37 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.mdRenderer = NewMarkdownRenderer(chatW-4, m.isDark)
 		m.subSessionVP.Width = chatW
 		m.subSessionVP.Height = chatH
-		m.refreshChat()
+	m.refreshChat()
+	m.refreshSidebar()
+
+	case UpdatePluginPanelsMsg:
+		for k, p := range msg.Panels {
+			m.pluginPanels[k] = p
+			found := false
+			for _, t := range m.tabOrder {
+				if t == k {
+					found = true
+					break
+				}
+			}
+			if !found {
+				m.tabOrder = append(m.tabOrder, k)
+				m.sidebarTabs[k] = &TabDef{Key: k, Title: p.Title, Builtin: false, Render: (*Model).renderPluginTabByKey}
+			}
+		}
+		if msg.ActivateFirst && len(msg.Panels) > 0 {
+			for k := range msg.Panels {
+				m.sidebarTab = k
+				break
+			}
+			m.refreshSidebar()
+		}
+		return m, nil
+
+	case ActivateSidebarTabMsg:
+		m.sidebarTab = msg.Key
 		m.refreshSidebar()
+		return m, nil
 
 	case tea.KeyMsg:
 		// 子会话视图 — 拦截所有按键
@@ -70,48 +99,24 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.refreshChat()
 				m.refreshSidebar()
 				return m, nil
-			case "f1":
-				m.sidebarTab = TabPlan
+			case "f1", "f2", "f3", "f4", "f5", "f6":
+				m.switchTabByFKey(msg.String())
 				m.agentSelectedIdx = -1
 				m.refreshSidebar()
 				return m, nil
-			case "f2":
-				m.sidebarTab = TabLog
-				m.agentSelectedIdx = -1
-				m.refreshSidebar()
-				return m, nil
-			case "f3":
-				m.sidebarTab = TabAgents
-				m.agentSelectedIdx = -1
-				m.refreshSidebar()
-				return m, nil
-			case "f4":
-				m.sidebarTab = TabSession
-				m.agentSelectedIdx = -1
-				m.refreshSidebar()
-				return m, nil
-			case "f5":
-				m.sidebarTab = TabCompanion
-				m.agentSelectedIdx = -1
-				m.refreshSidebar()
-				return m, nil
-			case "f6":
-				m.sidebarTab = TabTasks
-				m.agentSelectedIdx = -1
-				m.refreshSidebar()
-				return m, nil
-			case "tab":
-				tabs := []SidebarTab{TabPlan, TabLog, TabAgents, TabCompanion, TabTasks, TabSession}
-				for i, t := range tabs {
-					if t == m.sidebarTab {
-						m.sidebarTab = tabs[(i+1)%len(tabs)]
+		case "tab":
+			if len(m.tabOrder) > 0 {
+				for i, k := range m.tabOrder {
+					if k == m.sidebarTab {
+						m.sidebarTab = m.tabOrder[(i+1)%len(m.tabOrder)]
 						break
 					}
 				}
-				m.agentSelectedIdx = -1
-				m.refreshSidebar()
-				return m, nil
-			case "up", "down", "pgup", "pgdown", "home", "end":
+			}
+			m.agentSelectedIdx = -1
+			m.refreshSidebar()
+			return m, nil
+		case "up", "down", "pgup", "pgdown", "home", "end":
 				m.subSessionVP, cmd = m.subSessionVP.Update(msg)
 				return m, cmd
 			case "ctrl+s":
@@ -156,7 +161,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// Agents Tab 选中导航
-		if m.sidebarTab == TabAgents && len(m.agents) > 0 {
+		if m.sidebarTab == string(TabAgents) && len(m.agents) > 0 {
 			switch msg.String() {
 			case "up":
 				if m.agentSelectedIdx > 0 {
@@ -238,42 +243,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Quit
 
-		case "f1":
-			m.sidebarTab = TabPlan
-			m.agentSelectedIdx = -1
-			m.refreshSidebar()
-			return m, nil
-		case "f2":
-			m.sidebarTab = TabLog
-			m.agentSelectedIdx = -1
-			m.refreshSidebar()
-			return m, nil
-		case "f3":
-			m.sidebarTab = TabAgents
-			m.agentSelectedIdx = -1
-			m.refreshSidebar()
-			return m, nil
-		case "f4":
-			m.sidebarTab = TabSession
-			m.agentSelectedIdx = -1
-			m.refreshSidebar()
-			return m, nil
-		case "f5":
-			m.sidebarTab = TabCompanion
-			m.agentSelectedIdx = -1
-			m.refreshSidebar()
-			return m, nil
-		case "f6":
-			m.sidebarTab = TabTasks
+		case "f1", "f2", "f3", "f4", "f5", "f6":
+			m.switchTabByFKey(msg.String())
 			m.agentSelectedIdx = -1
 			m.refreshSidebar()
 			return m, nil
 		case "tab":
-			tabs := []SidebarTab{TabPlan, TabLog, TabAgents, TabCompanion, TabTasks, TabSession}
-			for i, t := range tabs {
-				if t == m.sidebarTab {
-					m.sidebarTab = tabs[(i+1)%len(tabs)]
-					break
+			if len(m.tabOrder) > 0 {
+				for i, k := range m.tabOrder {
+					if k == m.sidebarTab {
+						m.sidebarTab = m.tabOrder[(i+1)%len(m.tabOrder)]
+						break
+					}
 				}
 			}
 			m.agentSelectedIdx = -1
@@ -590,4 +571,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, tea.Batch(cmds...)
+}
+
+// switchTabByFKey 根据 F1-F6 按键切换到对应索引的 Tab
+func (m *Model) switchTabByFKey(key string) {
+	fkeys := map[string]int{"f1": 0, "f2": 1, "f3": 2, "f4": 3, "f5": 4, "f6": 5}
+	idx, ok := fkeys[key]
+	if !ok || idx >= len(m.tabOrder) {
+		return
+	}
+	m.sidebarTab = m.tabOrder[idx]
 }

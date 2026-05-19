@@ -76,6 +76,7 @@ type RolePlugin interface {
 type PluginContext struct {
     WorkDir string        // 工作区目录
     Bus     event.EventBus // 事件总线
+    UI      uiAPI.UIAPI   // TUI 插件接口
 }
 ```
 
@@ -83,6 +84,7 @@ type PluginContext struct {
 |------|------|------|
 | `WorkDir` | `string` | 当前工作区根目录路径，通过 yaegi 注入为插件中的 `var PluginWorkDir` 全局变量 |
 | `Bus` | `event.EventBus` | 事件总线实例，传递给 ToolPlugin 的 `Tools()` 方法，工具可借此与主系统通信 |
+| `UI` | `uiAPI.UIAPI` | TUI 插件接口，插件可通过此字段注册侧边栏面板、更新内容 |
 
 ---
 

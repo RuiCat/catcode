@@ -2,9 +2,9 @@ package tui
 
 import (
 	"fmt"
+	"github.com/charmbracelet/lipgloss"
 	"strings"
 	"time"
-	"github.com/charmbracelet/lipgloss"
 )
 
 type MessageType int
@@ -111,51 +111,44 @@ func (m *ChatMessage) render(width int, isDark bool) string {
 // 侧边栏 Tab
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-type SidebarTab int
+// TabKey 侧边栏标签唯一标识
+type TabKey = string
 
+// 内置 Tab 键名
 const (
-	TabPlan SidebarTab = iota
-	TabLog
-	TabAgents
-	TabCompanion // 猫猫状态
-	TabTasks     // 周期任务
-	TabSession
+	TabPlan      TabKey = "plan"
+	TabLog       TabKey = "log"
+	TabAgents    TabKey = "agents"
+	TabCompanion TabKey = "companion"
+	TabTasks     TabKey = "tasks"
+	TabSession   TabKey = "session"
 )
 
-func (t SidebarTab) String() string {
-	switch t {
-	case TabPlan:
-		return "📋 规划"
-	case TabLog:
-		return "📜 日志"
-	case TabAgents:
-		return "🤖 智能体"
-	case TabCompanion:
-		return "🐱 猫猫"
-	case TabTasks:
-		return "⏰ 任务"
-	case TabSession:
-		return "💾 会话"
-	}
-	return ""
+// TabDef 侧边栏标签定义
+type TabDef struct {
+	Key      TabKey
+	Title    string
+	Shortcut string
+	Builtin  bool
+	Render   func(m *Model, sb *strings.Builder)
 }
 
-func (t SidebarTab) Shortcut() string {
-	switch t {
-	case TabPlan:
-		return "F1"
-	case TabLog:
-		return "F2"
-	case TabAgents:
-		return "F3"
-	case TabCompanion:
-		return "F5"
-	case TabTasks:
-		return "F6"
-	case TabSession:
-		return "F4"
-	}
-	return ""
+// PluginPanel 插件侧边栏面板
+type PluginPanel struct {
+	Key     string
+	Title   string
+	Content string
+}
+
+// UpdatePluginPanelsMsg TUI消息：更新插件面板
+type UpdatePluginPanelsMsg struct {
+	Panels       map[string]PluginPanel
+	ActivateFirst bool // 是否自动切换到第一个插件面板（启动时使用）
+}
+
+// ActivateSidebarTabMsg TUI消息：激活指定侧边栏标签
+type ActivateSidebarTabMsg struct {
+	Key TabKey
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -206,4 +199,3 @@ type SessionInfo struct {
 	MessageCount int
 	IsActive     bool
 }
-

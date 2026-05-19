@@ -153,8 +153,11 @@ func TestModel_SidebarWidth_Default(t *testing.T) {
 	}
 }
 
-func TestSidebarTab_String(t *testing.T) {
-	tests := map[SidebarTab]string{
+func TestBuiltinTabDefs(t *testing.T) {
+	m := &Model{}
+	m.registerBuiltinTabs()
+
+	wantTitles := map[TabKey]string{
 		TabPlan:      "📋 规划",
 		TabLog:       "📜 日志",
 		TabAgents:    "🤖 智能体",
@@ -162,15 +165,7 @@ func TestSidebarTab_String(t *testing.T) {
 		TabTasks:     "⏰ 任务",
 		TabSession:   "💾 会话",
 	}
-	for tab, want := range tests {
-		if got := tab.String(); got != want {
-			t.Errorf("SidebarTab(%d).String() = %q, want %q", tab, got, want)
-		}
-	}
-}
-
-func TestSidebarTab_Shortcut(t *testing.T) {
-	tests := map[SidebarTab]string{
+	wantShortcuts := map[TabKey]string{
 		TabPlan:      "F1",
 		TabLog:       "F2",
 		TabAgents:    "F3",
@@ -178,10 +173,32 @@ func TestSidebarTab_Shortcut(t *testing.T) {
 		TabTasks:     "F6",
 		TabSession:   "F4",
 	}
-	for tab, want := range tests {
-		if got := tab.Shortcut(); got != want {
-			t.Errorf("SidebarTab(%d).Shortcut() = %q, want %q", tab, got, want)
+
+	for key, wantTitle := range wantTitles {
+		tab, ok := m.sidebarTabs[key]
+		if !ok {
+			t.Errorf("missing builtin tab %q", key)
+			continue
 		}
+		if tab.Title != wantTitle {
+			t.Errorf("tab %q: Title = %q, want %q", key, tab.Title, wantTitle)
+		}
+		if tab.Shortcut != wantShortcuts[key] {
+			t.Errorf("tab %q: Shortcut = %q, want %q", key, tab.Shortcut, wantShortcuts[key])
+		}
+		if !tab.Builtin {
+			t.Errorf("tab %q: Builtin = false, want true", key)
+		}
+		if tab.Key != key {
+			t.Errorf("tab %q: Key = %q, want %q", key, tab.Key, key)
+		}
+	}
+
+	if len(m.tabOrder) != 6 {
+		t.Errorf("tabOrder length = %d, want 6", len(m.tabOrder))
+	}
+	if m.tabOrder[0] != TabPlan {
+		t.Errorf("first tab = %q, want %q", m.tabOrder[0], TabPlan)
 	}
 }
 

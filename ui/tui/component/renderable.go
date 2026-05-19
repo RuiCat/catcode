@@ -38,6 +38,8 @@ type SidebarDisplay interface {
 	SetTodos(todos []TodoEntry)
 	SetLogs(logs []LogEntry)
 	SetAgents(agents []AgentEntry)
+	SetPluginPanels(panels map[string]PluginPanelEntry)
+	GetPluginPanels() map[string]PluginPanelEntry
 	Refresh()
 }
 

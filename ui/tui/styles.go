@@ -2,8 +2,8 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 	"github.com/charmbracelet/lipgloss"
+	"strings"
 )
 
 var (
@@ -178,9 +178,15 @@ var SpinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "�
 
 // ProgressBar 渲染进度条
 func ProgressBar(percent int, width int) string {
-	if percent < 0 { percent = 0 }
-	if percent > 100 { percent = 100 }
-	if width < 10 { width = 10 }
+	if percent < 0 {
+		percent = 0
+	}
+	if percent > 100 {
+		percent = 100
+	}
+	if width < 10 {
+		width = 10
+	}
 	barW := width - 8
 	filled := barW * percent / 100
 	empty := barW - filled

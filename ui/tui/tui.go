@@ -1,15 +1,15 @@
 package tui
 
 import (
-	"fmt"
-	"strings"
-	"time"
 	"catcode/tool"
 	"catcode/ui/tui/component"
+	"fmt"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"strings"
+	"time"
 )
 
 type Model struct {
@@ -32,10 +32,10 @@ type Model struct {
 	thinkingBuf    strings.Builder // 流式思考内容累积
 	thinkingActive bool            // 当前是否在接收思考内容
 	showThinking   bool            // 全局开关：是否显示思考过程
-	status  component.StatusDisplay
-	chat    component.ChatDisplay
-	side    component.SidebarDisplay
-	input   component.InputDisplay
+	status         component.StatusDisplay
+	chat           component.ChatDisplay
+	side           component.SidebarDisplay
+	input          component.InputDisplay
 
 	// 选项框模式
 	questionMode      bool
@@ -62,8 +62,11 @@ type Model struct {
 	textarea textarea.Model
 
 	// 侧边栏
-	sidebarTab   SidebarTab
-	sidebarVP    viewport.Model
+	sidebarTab    string                // 当前激活的 Tab key
+	sidebarTabs   map[string]*TabDef    // Tab 注册表
+	tabOrder      []string              // Tab 显示顺序
+	pluginPanels  map[string]PluginPanel // 插件面板内容
+	sidebarVP     viewport.Model
 	todos        []TodoEntry
 	logs         []LogEntry
 	agents       []AgentEntry
@@ -153,12 +156,20 @@ func New(modelName string, toolCount, roleCount int, sidebarWidth int, onSubmit 
 		isDark:           true,
 		agentSelectedIdx: -1,
 		subSessionVP:     viewport.New(60, 20),
+		sidebarTabs:      make(map[string]*TabDef),
+		tabOrder:         make([]string, 0),
+		pluginPanels:     make(map[string]PluginPanel),
 	}
+
+	m.registerBuiltinTabs()
 
 	m.mdRenderer = NewMarkdownRenderer(60, true)
 
 	m.showThinking = true
 	m.statusBar = component.NewStatusBar()
+	m.statusBar.ModelName = modelName
+	m.statusBar.ToolCount = toolCount
+	m.statusBar.RoleCount = roleCount
 	m.status = &statusAdapter{m: m}
 	m.chat = &chatAdapter{m: m}
 	m.side = &sidebarAdapter{m: m}

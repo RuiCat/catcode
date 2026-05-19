@@ -307,7 +307,6 @@ type RegistryInterface interface {
 	ReloadFromWorkspace(wdb storage.WorkspaceDB, workDir string) error
 }
 
-
 type Registry struct {
 	mu     sync.RWMutex
 	roles  map[string]*Instance // name → instance

@@ -2,8 +2,8 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 	"github.com/charmbracelet/lipgloss"
+	"strings"
 )
 
 func (m *Model) renderStatus() string {
@@ -16,20 +16,23 @@ func (m *Model) renderStatus() string {
 	return statusStyle.Width(m.width).Render(left)
 }
 
-
-
 // renderSidebarTabs 渲染侧边栏顶部的 Tab 切换栏
 func (m *Model) renderSidebarTabs() string {
-	tabs := []SidebarTab{TabPlan, TabLog, TabAgents, TabCompanion, TabTasks, TabSession}
 	var sb strings.Builder
-	for i, tab := range tabs {
-		if i > 0 {
+	first := true
+	for _, key := range m.tabOrder {
+		def, ok := m.sidebarTabs[key]
+		if !ok {
+			continue
+		}
+		if !first {
 			sb.WriteString(" ")
 		}
-		if tab == m.sidebarTab {
-			sb.WriteString(tabActiveStyle.Render(tab.String()))
+		first = false
+		if key == m.sidebarTab {
+			sb.WriteString(tabActiveStyle.Render(def.Title))
 		} else {
-			sb.WriteString(tabInactiveStyle.Render(tab.String()))
+			sb.WriteString(tabInactiveStyle.Render(def.Title))
 		}
 	}
 	return sb.String()
@@ -102,4 +105,3 @@ func (m *Model) renderHelpContent() string {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 内部方法
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-

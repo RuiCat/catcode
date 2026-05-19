@@ -168,7 +168,7 @@ func CompanionTalkTool(provider llm.Provider, roleReg role.RegistryInterface, bu
 			}
 
 			chatCtx, cancel := context.WithTimeout(context.Background(), // companion 独立会话，使用独立 context
-			30*time.Second)
+				30*time.Second)
 			defer cancel()
 			resp, err := provider.ChatSync(chatCtx, req)
 			if err != nil {
@@ -190,14 +190,14 @@ func CompanionTalkTool(provider llm.Provider, roleReg role.RegistryInterface, bu
 				companionStateMu.Lock()
 				companionStatus = *newState
 				companionStateMu.Unlock()
-			go func() {
-				defer func() {
-					if r := recover(); r != nil {
-						fmt.Fprintf(os.Stderr, "panic in saveCompanionState goroutine: %v\n%s", r, debug.Stack())
-					}
+				go func() {
+					defer func() {
+						if r := recover(); r != nil {
+							fmt.Fprintf(os.Stderr, "panic in saveCompanionState goroutine: %v\n%s", r, debug.Stack())
+						}
+					}()
+					saveCompanionState()
 				}()
-				saveCompanionState()
-			}()
 			}
 
 			companionSessionMu.Lock()

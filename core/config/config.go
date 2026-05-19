@@ -12,8 +12,8 @@ import (
 	"strings"
 
 	"catcode/ai/llm"
-	cerr "catcode/core/errors"
 	"catcode/core/config/loader"
+	cerr "catcode/core/errors"
 	"catcode/data/storage"
 )
 
@@ -113,8 +113,8 @@ type DBSource struct {
 	wdb storage.WorkspaceDB
 }
 
-func (s *DBSource) Name() string     { return "database" }
-func (s *DBSource) Priority() int    { return 10 }
+func (s *DBSource) Name() string  { return "database" }
+func (s *DBSource) Priority() int { return 10 }
 func (s *DBSource) Load() (map[string]any, error) {
 	return storage.UnflattenSettings(s.wdb.GetAllSettingsMap()), nil
 }
@@ -122,8 +122,8 @@ func (s *DBSource) Load() (map[string]any, error) {
 // EnvSource 从环境变量加载配置
 type EnvSource struct{}
 
-func (s *EnvSource) Name() string     { return "environment" }
-func (s *EnvSource) Priority() int    { return 20 }
+func (s *EnvSource) Name() string  { return "environment" }
+func (s *EnvSource) Priority() int { return 20 }
 func (s *EnvSource) Load() (map[string]any, error) {
 	return collectEnvOverrides(), nil
 }

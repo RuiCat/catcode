@@ -2,35 +2,26 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 	"github.com/charmbracelet/lipgloss"
+	"strings"
 )
 
 func (m *Model) refreshSidebar() {
 	var sb strings.Builder
 
-	switch m.sidebarTab {
-	case TabPlan:
-		m.renderPlanTab(&sb)
-
-	case TabLog:
-		m.renderLogTab(&sb)
-
-	case TabAgents:
-		m.renderAgentsTab(&sb)
-
-	case TabCompanion:
-		m.renderCompanionTab(&sb)
-
-	case TabTasks:
-		m.renderTasksTab(&sb)
-
-	case TabSession:
-		m.renderSessionTab(&sb)
+	def, ok := m.sidebarTabs[m.sidebarTab]
+	if !ok {
+		if panel, pok := m.pluginPanels[m.sidebarTab]; pok {
+			m.renderPluginTab(&sb, panel)
+		} else {
+			sb.WriteString(mutedStyle("(未知标签)"))
+		}
+	} else {
+		def.Render(m, &sb)
 	}
 
 	m.sidebarVP.SetContent(sb.String())
-	m.sidebarVP.GotoTop() // 每次刷新时回到顶部，避免内容"消失"
+	m.sidebarVP.GotoTop()
 }
 
 // enterSubSession 进入子会话视图
@@ -314,3 +305,60 @@ func (m *Model) renderCompanionTab(sb *strings.Builder) {
 	}
 }
 
+func (m *Model) renderPluginTab(sb *strings.Builder, panel PluginPanel) {
+	sb.WriteString(boldStyle(fmt.Sprintf("%s\n", panel.Title)))
+	sb.WriteString(strings.Repeat("─", m.sidebarWidth-2) + "\n\n")
+	if panel.Content == "" {
+		sb.WriteString(mutedStyle("(插件面板暂无内容)\n"))
+	} else {
+		rendered := m.mdRenderer.Render(panel.Content)
+		sb.WriteString(rendered)
+	}
+}
+
+func (m *Model) renderPluginTabByKey(sb *strings.Builder) {
+	panel, ok := m.pluginPanels[m.sidebarTab]
+	if !ok {
+		sb.WriteString(mutedStyle("(插件面板未注册)"))
+		return
+	}
+	sb.WriteString(boldStyle(fmt.Sprintf("%s\n", panel.Title)))
+	sb.WriteString(strings.Repeat("─", m.sidebarWidth-2) + "\n\n")
+	if panel.Content == "" {
+		sb.WriteString(mutedStyle("(等待插件更新...)\n"))
+	} else {
+		rendered := m.mdRenderer.Render(panel.Content)
+		sb.WriteString(rendered)
+	}
+}
+
+// registerBuiltinTabs 注册所有内置侧边栏标签
+func (m *Model) registerBuiltinTabs() {
+	m.sidebarTabs = make(map[string]*TabDef)
+	m.tabOrder = make([]string, 0, 6)
+
+	tabs := []struct {
+		key      TabKey
+		title    string
+		shortcut string
+		render   func(m *Model, sb *strings.Builder)
+	}{
+		{TabPlan, "📋 规划", "F1", (*Model).renderPlanTab},
+		{TabLog, "📜 日志", "F2", (*Model).renderLogTab},
+		{TabAgents, "🤖 智能体", "F3", (*Model).renderAgentsTab},
+		{TabCompanion, "🐱 猫猫", "F5", (*Model).renderCompanionTab},
+		{TabTasks, "⏰ 任务", "F6", (*Model).renderTasksTab},
+		{TabSession, "💾 会话", "F4", (*Model).renderSessionTab},
+	}
+
+	for _, t := range tabs {
+		m.sidebarTabs[t.key] = &TabDef{
+			Key:      t.key,
+			Title:    t.title,
+			Shortcut: t.shortcut,
+			Builtin:  true,
+			Render:   t.render,
+		}
+		m.tabOrder = append(m.tabOrder, t.key)
+	}
+}

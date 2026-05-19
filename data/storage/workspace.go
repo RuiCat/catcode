@@ -319,4 +319,3 @@ func (w *workspaceDBImpl) Close() error {
 func (w *workspaceDBImpl) DB() *sql.DB {
 	return w.db
 }
-

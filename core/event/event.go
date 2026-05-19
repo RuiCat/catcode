@@ -293,12 +293,12 @@ const (
 
 // 规划引擎事件
 const (
-	EventPlanCreated      = "plan.created"
-	EventPlanStepStart    = "plan.step.start"
-	EventPlanStepDone     = "plan.step.done"
-	EventPlanCompleted    = "plan.completed"
-	EventPlanModeEntered  = "plan.mode.entered"
-	EventPlanModeExited   = "plan.mode.exited"
+	EventPlanCreated     = "plan.created"
+	EventPlanStepStart   = "plan.step.start"
+	EventPlanStepDone    = "plan.step.done"
+	EventPlanCompleted   = "plan.completed"
+	EventPlanModeEntered = "plan.mode.entered"
+	EventPlanModeExited  = "plan.mode.exited"
 )
 
 // 任务状态事件

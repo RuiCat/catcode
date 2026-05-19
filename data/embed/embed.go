@@ -50,10 +50,10 @@ type agentYAML struct {
 }
 
 type agentModelYAML struct {
-	Provider    string          `yaml:"provider"`
-	Name        string          `yaml:"name"`
-	Temperature float64         `yaml:"temperature"`
-	Limit       agentLimitYAML  `yaml:"limit"`
+	Provider    string         `yaml:"provider"`
+	Name        string         `yaml:"name"`
+	Temperature float64        `yaml:"temperature"`
+	Limit       agentLimitYAML `yaml:"limit"`
 }
 
 type agentLimitYAML struct {

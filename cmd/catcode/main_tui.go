@@ -42,6 +42,22 @@ func runTUI(arch orchestrator.ArchitectInterface, cfg *config.Config, app *Appli
 	// 发送初始猫猫状态到侧边栏
 	builtin.PublishInitialCompanionStatus(app.Bus)
 
+	// 启动时同步插件面板到侧边栏
+	if app.UIAPI != nil {
+		apiPanels := app.UIAPI.GetPanels()
+		if len(apiPanels) > 0 {
+			panels := make(map[string]tui.PluginPanel, len(apiPanels))
+			for k, p := range apiPanels {
+				panels[k] = tui.PluginPanel{Key: p.Key, Title: p.Title, Content: p.Content}
+			}
+			app.TUIModel.Update(tui.UpdatePluginPanelsMsg{Panels: panels, ActivateFirst: true})
+			for k := range panels {
+				app.TUIModel.Update(tui.ActivateSidebarTabMsg{Key: k})
+				break
+			}
+		}
+	}
+
 	if _, err := app.TUIProgram.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "TUI 错误: %v\n", err)
 	}
@@ -80,18 +96,18 @@ func buildInputHandler(app *Application, arch orchestrator.ArchitectInterface) f
 			app.TUIProgram.Send(tui.StatusMsg{MsgCount: arch.GetSession().MessageCount()})
 			// 自动保存会话（异步，不阻塞 UI）
 			if app.Wdb != nil {
-			go func() {
-				defer func() {
-					if r := recover(); r != nil {
-						fmt.Fprintf(os.Stderr, "panic in save goroutine: %v\n%s", r, debug.Stack())
-					}
+				go func() {
+					defer func() {
+						if r := recover(); r != nil {
+							fmt.Fprintf(os.Stderr, "panic in save goroutine: %v\n%s", r, debug.Stack())
+						}
+					}()
+					sess := arch.GetSession()
+					conv := sess.ToConversationRow()
+					msgs := sess.ToMessageRows()
+					_ = app.Wdb.SaveConversation(conv, msgs)
 				}()
-				sess := arch.GetSession()
-				conv := sess.ToConversationRow()
-				msgs := sess.ToMessageRows()
-				_ = app.Wdb.SaveConversation(conv, msgs)
-			}()
-		}
+			}
 			return
 		}
 
@@ -111,10 +127,10 @@ func buildInputHandler(app *Application, arch orchestrator.ArchitectInterface) f
 		if app.Wdb != nil {
 			go func() {
 				defer func() {
-				if r := recover(); r != nil {
-					fmt.Fprintf(os.Stderr, "panic in save goroutine: %v\n%s", r, debug.Stack())
-				}
-			}()
+					if r := recover(); r != nil {
+						fmt.Fprintf(os.Stderr, "panic in save goroutine: %v\n%s", r, debug.Stack())
+					}
+				}()
 				sess := arch.GetSession()
 				conv := sess.ToConversationRow()
 				msgs := sess.ToMessageRows()
@@ -184,6 +200,18 @@ func loadTUIState(app *Application, arch orchestrator.ArchitectInterface) {
 
 	// 周期任务：空闲时检查 + 执行
 	app.TUIModel.SetOnTick(func() {
+		// 同步插件面板到侧边栏
+		if app.UIAPI != nil {
+			apiPanels := app.UIAPI.GetPanels()
+			if len(apiPanels) > 0 {
+				panels := make(map[string]tui.PluginPanel, len(apiPanels))
+				for k, p := range apiPanels {
+					panels[k] = tui.PluginPanel{Key: p.Key, Title: p.Title, Content: p.Content}
+				}
+				app.TUIModel.Update(tui.UpdatePluginPanelsMsg{Panels: panels})
+			}
+		}
+
 		agentBusy := app.AgentPool != nil && app.AgentPool.ActiveCount() > 0
 		results := app.Scheduler.Check(agentBusy)
 		for _, r := range results {

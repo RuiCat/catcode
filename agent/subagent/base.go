@@ -52,8 +52,8 @@ type BaseAgent struct {
 	conversationID   string
 	contextLimit     int
 	maxToolResultLen int
-	contextBuilder ContextBuilder // Hook 上下文构建器（可选）
-	workDir        string // 仅在 Execute 前通过 SetWorkDir 设置，executeToolCalls 中只读
+	contextBuilder   ContextBuilder // Hook 上下文构建器（可选）
+	workDir          string         // 仅在 Execute 前通过 SetWorkDir 设置，executeToolCalls 中只读
 }
 
 // ID 返回子智能体唯一标识

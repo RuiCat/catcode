@@ -1,10 +1,10 @@
 package tui
 
 import (
-	"time"
 	"catcode/tool"
-	"strings"
 	"github.com/charmbracelet/lipgloss"
+	"strings"
+	"time"
 )
 
 type StreamMsg string
@@ -75,7 +75,6 @@ type QuestionRequestMsg struct {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 辅助
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 
 func truncStr(s string, maxLen int) string {
 	runes := []rune(s)

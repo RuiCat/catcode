@@ -107,12 +107,12 @@ type Session struct {
 	Metadata     map[string]string // 元数据
 
 	// 上下文压缩
-	CompressThreshold int // token 压缩阈值
-	Summary           string
+	CompressThreshold   int // token 压缩阈值
+	Summary             string
 	MemoryIndex         string                // 记忆索引（global + workspace，注入为独立系统消息）
 	InstructionsContent string                // 指令文件内容（注入到 BuildRequest 的 system context 中）
 	MaxToolResultLen    int                   // 工具结果传给 LLM 时的截断长度（DB 层仍存完整数据）
-	FileBlocks        map[string]*FileBlock // 文件路径 → 文件块（替换式读取）
+	FileBlocks          map[string]*FileBlock // 文件路径 → 文件块（替换式读取）
 
 	// 预编码 buffer（零拷贝关键）
 	msgBuf  buffer.Buffer // 消息拼接 buffer

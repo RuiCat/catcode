@@ -372,6 +372,7 @@ type pluginWrapper struct {
 	ctx         *PluginContext
 	toolsFunc   reflect.Value
 	roleDefFunc reflect.Value
+	panelCh     chan<- string // 插件面板更新通道
 }
 
 func (w *pluginWrapper) Name() string    { return w.name }
@@ -403,6 +404,25 @@ func (w *pluginWrapper) Tools(bus event.EventBus) (tools []*tool.Tool) {
 		if elem.Kind() == reflect.Ptr || elem.Kind() == reflect.Interface {
 			if t, ok := elem.Interface().(*tool.Tool); ok {
 				tools = append(tools, t)
+			}
+		}
+	}
+	// 自动面板更新：包装每个工具的 Call，将返回值推送到侧边栏面板
+	if w.panelCh != nil {
+		for _, t := range tools {
+			if t.Call == nil {
+				continue
+			}
+			origCall := t.Call
+			t.Call = func(ctx *tool.Context, args map[string]any) (string, error) {
+				result, err := origCall(ctx, args)
+				if result != "" {
+					select {
+					case w.panelCh <- result:
+					default:
+					}
+				}
+				return result, err
 			}
 		}
 	}
@@ -438,4 +458,17 @@ func (w *pluginWrapper) RoleDef() (def role.RoleDef) {
 		return def
 	}
 	return role.RoleDef{}
+}
+
+// SetupPanel 为插件注册侧边栏面板
+func (w *pluginWrapper) SetupPanel() {
+	if w.ctx.UI == nil {
+		return
+	}
+	title := "🔌 " + w.name
+	ch, err := w.ctx.UI.RegisterSidebarTab(w.name, title)
+	if err != nil {
+		return
+	}
+	w.panelCh = ch
 }

@@ -6,6 +6,8 @@ import (
 	"catcode/agent/role"
 	"catcode/core/event"
 	"catcode/tool"
+
+	uiAPI "catcode/ui/tui/plugin"
 )
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -34,6 +36,7 @@ type RolePlugin interface {
 type PluginContext struct {
 	WorkDir string // 工作区目录
 	Bus     event.EventBus
+	UI      uiAPI.UIAPI // TUI 插件接口
 }
 
 // PluginInfo 插件元信息

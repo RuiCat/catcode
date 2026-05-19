@@ -84,6 +84,11 @@ func (m *Manager) loadOne(path string) (PluginInfo, error) {
 	m.instances[info.Name] = p
 	m.mu.Unlock()
 
+	// 为插件设置侧边栏面板
+	if pw, ok := p.(*pluginWrapper); ok {
+		pw.SetupPanel()
+	}
+
 	return info, nil
 }
 

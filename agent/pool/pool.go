@@ -38,7 +38,7 @@ type PoolInterface interface {
 
 type Pool struct {
 	agents      map[string][]subagent.SubAgent // type → instances
-	providers   *llm.ProviderRegistry           // 多 provider 注册表
+	providers   *llm.ProviderRegistry          // 多 provider 注册表
 	bus         event.EventBus
 	configs     map[string]subagent.Config // type → config
 	toolFactory func(string) *tool.Tool    // 工具工厂函数
@@ -48,7 +48,7 @@ type Pool struct {
 	maxConcurrent int
 
 	wdb           storage.WorkspaceDB // 数据库引用
-	contextLimit  int                  // 默认上下文限制
+	contextLimit  int                 // 默认上下文限制
 	memoryService storage.MemoryService
 	workDir       string
 

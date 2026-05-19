@@ -148,22 +148,22 @@ func extractKeyInfo(content string) string {
 // 字段 getter/setter（SessionInterface 接口需要）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-func (s *Session) GetID() string              { return s.ID }
-func (s *Session) GetModel() string           { return s.Model }
-func (s *Session) GetSystemPrompt() string    { return s.SystemPrompt }
-func (s *Session) SetSystemPrompt(p string)   { s.SystemPrompt = p }
-func (s *Session) GetTemperature() float64    { return s.Temperature }
-func (s *Session) SetTemperature(t float64)   { s.Temperature = t }
-func (s *Session) GetMaxTokens() int          { return s.MaxTokens }
-func (s *Session) SetMaxTokens(m int)         { s.MaxTokens = m }
-func (s *Session) GetMemoryIndex() string     { return s.MemoryIndex }
-func (s *Session) SetMemoryIndex(idx string)  { s.MemoryIndex = idx }
-func (s *Session) GetSummary() string         { return s.Summary }
-func (s *Session) GetMaxToolResultLen() int   { return s.MaxToolResultLen }
-func (s *Session) SetMaxToolResultLen(l int)  { s.MaxToolResultLen = l }
-func (s *Session) GetCompressThreshold() int  { return s.CompressThreshold }
-func (s *Session) SetCompressThreshold(t int)  { s.CompressThreshold = t }
-func (s *Session) GetInstructionsContent() string { return s.InstructionsContent }
+func (s *Session) GetID() string                   { return s.ID }
+func (s *Session) GetModel() string                { return s.Model }
+func (s *Session) GetSystemPrompt() string         { return s.SystemPrompt }
+func (s *Session) SetSystemPrompt(p string)        { s.SystemPrompt = p }
+func (s *Session) GetTemperature() float64         { return s.Temperature }
+func (s *Session) SetTemperature(t float64)        { s.Temperature = t }
+func (s *Session) GetMaxTokens() int               { return s.MaxTokens }
+func (s *Session) SetMaxTokens(m int)              { s.MaxTokens = m }
+func (s *Session) GetMemoryIndex() string          { return s.MemoryIndex }
+func (s *Session) SetMemoryIndex(idx string)       { s.MemoryIndex = idx }
+func (s *Session) GetSummary() string              { return s.Summary }
+func (s *Session) GetMaxToolResultLen() int        { return s.MaxToolResultLen }
+func (s *Session) SetMaxToolResultLen(l int)       { s.MaxToolResultLen = l }
+func (s *Session) GetCompressThreshold() int       { return s.CompressThreshold }
+func (s *Session) SetCompressThreshold(t int)      { s.CompressThreshold = t }
+func (s *Session) GetInstructionsContent() string  { return s.InstructionsContent }
 func (s *Session) SetInstructionsContent(c string) { s.InstructionsContent = c }
-func (s *Session) LockMessages()              { s.mu.Lock() }
-func (s *Session) UnlockMessages()            { s.mu.Unlock() }
+func (s *Session) LockMessages()                   { s.mu.Lock() }
+func (s *Session) UnlockMessages()                 { s.mu.Unlock() }
