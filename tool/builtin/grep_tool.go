@@ -51,6 +51,13 @@ func grepCall(ctx *tool.Context, args map[string]any) (string, error) {
 		searchPath = "."
 	}
 
+	// 安全检查：验证搜索路径在工作区范围内
+	resolvedPath, err := ResolveAndCheckPath(searchPath, ctx.WorkDir)
+	if err != nil {
+		return "", err
+	}
+	searchPath = resolvedPath
+
 	re, err := regexp.Compile(pattern)
 	if err != nil {
 		return "", cerr.Wrap(err, "grep: 正则表达式无效")

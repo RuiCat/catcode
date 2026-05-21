@@ -42,7 +42,11 @@ func diffCall(ctx *tool.Context, args map[string]any) (string, error) {
 	}
 
 	// 与磁盘文件比较
-	data, err := os.ReadFile(path)
+	resolvedPath, err := ResolveAndCheckPath(path, ctx.WorkDir)
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(resolvedPath)
 	if err != nil {
 		return "", cerr.Wrap(err, "diff: 读取文件失败")
 	}

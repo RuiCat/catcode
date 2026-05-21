@@ -32,7 +32,10 @@ func SkillTool() *tool.Tool {
 
 func skillCall(ctx *tool.Context, args map[string]any) (string, error) {
 	skillsDir := filepath.Join(ctx.WorkDir, ".catcode", "skills")
-	name, _ := args["name"].(string)
+	name, ok := args["name"].(string)
+	if !ok {
+		return "", cerr.Newf("skill: name 参数类型错误")
+	}
 	if name == "" {
 		return listSkills(skillsDir)
 	}

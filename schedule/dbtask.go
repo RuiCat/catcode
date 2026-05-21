@@ -1,9 +1,6 @@
 package schedule
 
 import (
-	"context"
-	"fmt"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -24,15 +21,22 @@ type DBTask struct {
 func (t *DBTask) Name() string            { return t.Row.Name }
 func (t *DBTask) Interval() time.Duration { return time.Duration(t.Row.IntervalSeconds) * time.Second }
 func (t *DBTask) Condition() func() bool {
-	if t.Busy == nil {
-		return nil
-	}
 	return func() bool {
-		return !t.Busy() // 仅在智能体空闲时触发
+		if !t.Row.Enabled {
+			return false
+		}
+		if t.Busy != nil && t.Busy() {
+			return false
+		}
+		return true
 	}
 }
 
 func (t *DBTask) Run() TaskResult {
+	// 检查任务是否已禁用
+	if !t.Row.Enabled {
+		return TaskResult{Name: t.Row.Name, Skipped: true}
+	}
 	// 检查智能体是否繁忙
 	if t.Busy != nil && t.Busy() {
 		return TaskResult{Name: t.Row.Name, Skipped: true, Output: "智能体运行中，跳过执行"}
@@ -45,39 +49,28 @@ func (t *DBTask) Run() TaskResult {
 
 	// 执行任务描述中定义的简单操作
 	output := t.executeTask()
+
+	// run_once 任务执行后自动禁用
+	if t.Row.RunOnce && t.Wdb != nil {
+		t.Wdb.UpdateScheduledTask(t.Row.ID, t.Row.Name, t.Row.Description,
+			t.Row.IntervalSeconds, false)
+		t.Row.Enabled = false
+		t.Row.RunOnce = false
+	}
+
 	return TaskResult{Name: t.Row.Name, Output: output}
 }
 
-// executeTask 执行任务描述中的简单操作
+// executeTask 记录任务检查结果（安全策略：不再执行从数据库读取的命令）
 func (t *DBTask) executeTask() string {
 	desc := strings.TrimSpace(t.Row.Description)
 	if desc == "" {
 		return "完成 (无具体操作描述)"
 	}
-	// 如果描述是一个可执行命令，尝试执行
-	lines := strings.SplitN(desc, "\n", 2)
-	cmdStr := strings.TrimSpace(lines[0])
-	// 仅执行看起来像命令的描述（不以自然语言开头的）
-	if !looksLikeCommand(cmdStr) {
-		return fmt.Sprintf("任务: %s — 已检查 (非命令描述)", desc)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "sh", "-c", cmdStr)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Sprintf("任务: %s — 执行失败: %v\n输出: %s", desc, err, string(output))
-	}
-	return fmt.Sprintf("任务: %s — 执行成功\n%s", desc, string(output))
+	// 安全策略：周期任务仅用于提醒和状态检查，不执行任意 shell 命令
+	// LLM 可修改 scheduled_tasks 表，执行命令存在注入风险
+	return desc
 }
-
-func looksLikeCommand(s string) bool {
-	return strings.Contains(s, " ") || strings.HasPrefix(s, "./") ||
-		strings.HasPrefix(s, "go ") || strings.HasPrefix(s, "git ") ||
-		strings.HasPrefix(s, "ls ") || strings.HasPrefix(s, "cat ") ||
-		strings.HasPrefix(s, "echo ")
-}
-
 // LoadDBTasks 从 DB 加载所有启用的任务到调度器
 func LoadDBTasks(s *Scheduler, wdb storage.WorkspaceDB, busy func() bool) error {
 	tasks, err := wdb.ListScheduledTasks()

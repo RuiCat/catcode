@@ -1,3 +1,4 @@
+// Package hook 提供 Hook 文件发现、加载与安全沙箱策略。
 package hook
 
 import (

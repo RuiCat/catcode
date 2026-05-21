@@ -32,24 +32,16 @@ func WriteTool() *tool.Tool {
 }
 
 func writeCall(ctx *tool.Context, args map[string]any) (string, error) {
-	path, _ := args["path"].(string)
+	path, ok := args["path"].(string)
+	if !ok || path == "" {
+		return "", cerr.Newf("write: path 参数必填")
+	}
 	content, _ := args["content"].(string)
 
-	// 相对路径基于工作目录解析
-	if !filepath.IsAbs(path) && ctx.WorkDir != "" {
-		path = filepath.Join(ctx.WorkDir, path)
-	}
-
-	// 安全检查：解析父目录符号链接并验证路径在工作区内
-	cleanPath := filepath.Clean(path)
-	parentDir := filepath.Dir(cleanPath)
-	resolvedParent, err := filepath.EvalSymlinks(parentDir)
+	// 安全检查：使用 ResolveAndCheckPath 统一验证路径
+	resolvedPath, err := ResolveAndCheckPath(path, ctx.WorkDir)
 	if err != nil {
-		return "", cerr.Wrap(err, "write: 无法解析父目录路径")
-	}
-	resolvedPath := filepath.Join(resolvedParent, filepath.Base(cleanPath))
-	if !strings.HasPrefix(resolvedPath, ctx.WorkDir) {
-		return "", cerr.Newf("write: 路径超出工作区范围")
+		return "", err
 	}
 
 	// 确保目录存在
@@ -61,6 +53,14 @@ func writeCall(ctx *tool.Context, args map[string]any) (string, error) {
 	// 检查是否为新文件
 	_, err = os.Stat(resolvedPath)
 	isNew := os.IsNotExist(err)
+
+	// TOCTOU 防护：写入前对已有文件重新验证路径
+	if info, err := os.Stat(resolvedPath); err == nil && !info.IsDir() {
+		rechecked, err := filepath.EvalSymlinks(resolvedPath)
+		if err == nil && !strings.HasPrefix(rechecked, ctx.WorkDir) {
+			return "", cerr.Newf("write: 路径在安全检查后发生变化，拒绝写入")
+		}
+	}
 
 	if err := os.WriteFile(resolvedPath, []byte(content), 0644); err != nil {
 		return "", cerr.Wrap(err, "write: 写入失败")

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime/debug"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -24,6 +25,11 @@ func runREPL(arch orchestrator.ArchitectInterface, app *Application) {
 
 	inputCh := make(chan string, 8)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Fprintf(os.Stderr, "[PANIC] REPL scanner goroutine: %v\n%s\n", r, debug.Stack())
+			}
+		}()
 		scanner := bufio.NewScanner(os.Stdin)
 		for scanner.Scan() {
 			inputCh <- scanner.Text()

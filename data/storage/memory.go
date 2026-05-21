@@ -1,6 +1,11 @@
 package storage
 
-import "time"
+import (
+	"fmt"
+	"os"
+	"runtime/debug"
+	"time"
+)
 
 // MemoryEntry 长期记忆条目
 type MemoryEntry struct {
@@ -65,6 +70,11 @@ func (w *workspaceDBImpl) GetMemory(scope, key string) (*MemoryEntry, error) {
 	}
 	// 更新访问时间（轻量写，非关键路径使用独立语句，通过写锁序列化）
 	go func(scope, key string) {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Fprintf(os.Stderr, "[PANIC] memory update goroutine: %v\n%s\n", r, debug.Stack())
+			}
+		}()
 		w.mu.Lock()
 		defer w.mu.Unlock()
 		if _, err := w.db.Exec("UPDATE memory SET access_count = access_count + 1, accessed_at = CURRENT_TIMESTAMP WHERE scope = ? AND key = ?", scope, key); err != nil {

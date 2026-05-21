@@ -35,8 +35,8 @@ func ApplyPatchTool() *tool.Tool {
 }
 
 func applyPatchCall(ctx *tool.Context, args map[string]any) (string, error) {
-	patchesRaw, _ := args["patches"].(string)
-	if patchesRaw == "" {
+	patchesRaw, ok := args["patches"].(string)
+	if !ok || patchesRaw == "" {
 		return "", cerr.New("apply_patch: patches 参数不能为空")
 	}
 
@@ -57,62 +57,55 @@ func applyPatchCall(ctx *tool.Context, args map[string]any) (string, error) {
 			path = filepath.Join(ctx.WorkDir, path)
 		}
 		cleanPath := filepath.Clean(path)
-		// 安全检查：检查每个路径段是否为 ".." 而非简单子串匹配
-		safe := true
-		for _, seg := range strings.Split(cleanPath, string(filepath.Separator)) {
-			if seg == ".." {
-				safe = false
-				break
-			}
-		}
-		if !safe {
+		resolvedPath, err := ResolveAndCheckPath(cleanPath, ctx.WorkDir)
+		if err != nil {
 			rollbackPatches(backups)
 			return "", cerr.Newf("apply_patch: 不安全的路径: %s，已回滚全部更改", p.Path)
 		}
 
-		_, alreadyBackedUp := backups[cleanPath]
+		_, alreadyBackedUp := backups[resolvedPath]
 
-		data, readErr := os.ReadFile(cleanPath)
+		data, readErr := os.ReadFile(resolvedPath)
 		fileExists := readErr == nil
 
 		if readErr != nil && !os.IsNotExist(readErr) {
 			rollbackPatches(backups)
-			return "", cerr.Wrapf(readErr, "apply_patch: 读取文件 %s 失败，已回滚全部更改", cleanPath)
+			return "", cerr.Wrapf(readErr, "apply_patch: 读取文件 %s 失败，已回滚全部更改", resolvedPath)
 		}
 
 		if fileExists && strings.Contains(string(data), "\x00") {
 			rollbackPatches(backups)
-			return "", cerr.Newf("apply_patch: 文件 %s 是二进制文件，无法应用补丁，已回滚全部更改", cleanPath)
+			return "", cerr.Newf("apply_patch: 文件 %s 是二进制文件，无法应用补丁，已回滚全部更改", resolvedPath)
 		}
 
 		if !alreadyBackedUp {
 			if fileExists {
-				backups[cleanPath] = data
+				backups[resolvedPath] = data
 			} else {
-				backups[cleanPath] = nil
+				backups[resolvedPath] = nil
 			}
 		}
 
 		if !fileExists {
 			if p.OldString == "" {
-				dir := filepath.Dir(cleanPath)
+				dir := filepath.Dir(resolvedPath)
 				if err := os.MkdirAll(dir, 0755); err != nil {
 					rollbackPatches(backups)
 					return "", cerr.Wrapf(err, "apply_patch: 创建目录 %s 失败，已回滚全部更改", dir)
 				}
-				if err := os.WriteFile(cleanPath, []byte(p.NewString), 0644); err != nil {
+				if err := os.WriteFile(resolvedPath, []byte(p.NewString), 0644); err != nil {
 					rollbackPatches(backups)
-					return "", cerr.Wrapf(err, "apply_patch: 写入文件 %s 失败，已回滚全部更改", cleanPath)
+					return "", cerr.Wrapf(err, "apply_patch: 写入文件 %s 失败，已回滚全部更改", resolvedPath)
 				}
 				continue
 			}
 			rollbackPatches(backups)
-			return "", cerr.Newf("apply_patch: 文件 %s 不存在，无法匹配 old_string，已回滚全部更改", cleanPath)
+			return "", cerr.Newf("apply_patch: 文件 %s 不存在，无法匹配 old_string，已回滚全部更改", resolvedPath)
 		}
 
 		if p.OldString == "" {
 			rollbackPatches(backups)
-			return "", cerr.Newf("apply_patch: old_string 不能为空（文件 %s 已存在），已回滚全部更改", cleanPath)
+			return "", cerr.Newf("apply_patch: old_string 不能为空（文件 %s 已存在），已回滚全部更改", resolvedPath)
 		}
 
 		content := string(data)
@@ -124,7 +117,7 @@ func applyPatchCall(ctx *tool.Context, args map[string]any) (string, error) {
 			matchedIdx, matchedStr := fuzzyMatchEdit(content, oldStr)
 			if matchedIdx == -1 {
 				rollbackPatches(backups)
-				return "", cerr.Newf("apply_patch: 补丁 %d 在文件 %s 中未找到 old_string，已回滚全部更改", i+1, cleanPath)
+				return "", cerr.Newf("apply_patch: 补丁 %d 在文件 %s 中未找到 old_string，已回滚全部更改", i+1, resolvedPath)
 			}
 			idx = matchedIdx
 			oldStr = matchedStr
@@ -132,15 +125,15 @@ func applyPatchCall(ctx *tool.Context, args map[string]any) (string, error) {
 
 		newContent := content[:idx] + newStr + content[idx+len(oldStr):]
 
-		dir := filepath.Dir(cleanPath)
+		dir := filepath.Dir(resolvedPath)
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			rollbackPatches(backups)
 			return "", cerr.Wrapf(err, "apply_patch: 创建目录 %s 失败，已回滚全部更改", dir)
 		}
 
-		if err := os.WriteFile(cleanPath, []byte(newContent), 0644); err != nil {
+		if err := os.WriteFile(resolvedPath, []byte(newContent), 0644); err != nil {
 			rollbackPatches(backups)
-			return "", cerr.Wrapf(err, "apply_patch: 写入文件 %s 失败，已回滚全部更改", cleanPath)
+			return "", cerr.Wrapf(err, "apply_patch: 写入文件 %s 失败，已回滚全部更改", resolvedPath)
 		}
 	}
 

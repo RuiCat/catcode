@@ -55,6 +55,7 @@ type ScheduledTaskInfo struct {
 	Description     string
 	IntervalSeconds int
 	Enabled         bool
+	RunOnce         bool
 }
 
 type UpdateTasksMsg struct {
@@ -76,13 +77,6 @@ type QuestionRequestMsg struct {
 // 辅助
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-func truncStr(s string, maxLen int) string {
-	runes := []rune(s)
-	if len(runes) <= maxLen {
-		return s
-	}
-	return string(runes[:maxLen]) + "…"
-}
 
 func nowTime() string {
 	return time.Now().Format("15:04:05")

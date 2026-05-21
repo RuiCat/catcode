@@ -41,13 +41,20 @@ func globCall(ctx *tool.Context, args map[string]any) (string, error) {
 		root = "."
 	}
 
+	// 安全检查：验证搜索路径在工作区范围内
+	resolvedPath, err := ResolveAndCheckPath(root, ctx.WorkDir)
+	if err != nil {
+		return "", err
+	}
+	root = resolvedPath
+
 	var matches []string
 	baseDir := filepath.Dir(pattern)
 	if baseDir == "." {
 		baseDir = ""
 	}
 
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil // 跳过无法访问的目录
 		}

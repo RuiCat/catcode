@@ -1422,7 +1422,7 @@ type UIAPI interface {
 | `UnregisterSidebarTab(key)` | 注销自定义侧边栏面板 |
 | `GetPanels()` | 获取所有已注册插件面板 |
 
-> ✅ 已实现 (v0.9.3)
+> ✅ 已实现 (v0.9.2)
 
 ---
 

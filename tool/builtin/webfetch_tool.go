@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
 
 	cerr "catcode/core/errors"
@@ -17,6 +18,24 @@ import (
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // WebFetch — URL 内容获取工具
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+// safeDialer 在建立连接时检查目标 IP，防止 DNS 重绑定绕过 isPrivateHost 的初始检查
+var safeDialer = &net.Dialer{
+	Timeout:   10 * time.Second,
+	KeepAlive: 30 * time.Second,
+	Control: func(network, address string, c syscall.RawConn) error {
+		host, _, err := net.SplitHostPort(address)
+		if err != nil {
+			return err
+		}
+		ip := net.ParseIP(host)
+		if ip != nil && isPrivateIP(ip) {
+			return cerr.Newf("禁止连接内网地址: %s", ip)
+		}
+		return nil
+	},
+}
 
 // WebFetchTool 创建 URL 内容获取工具
 // 支持将 HTML 转换为文本/markdown 格式，或返回原始 HTML。
@@ -40,7 +59,10 @@ func WebFetchTool() *tool.Tool {
 }
 
 func webfetchCall(ctx *tool.Context, args map[string]any) (string, error) {
-	rawURL, _ := args["url"].(string)
+	rawURL, ok := args["url"].(string)
+	if !ok || rawURL == "" {
+		return "", cerr.Newf("webfetch: url 参数必填")
+	}
 	format, _ := args["format"].(string)
 	if format == "" {
 		format = "markdown"
@@ -57,6 +79,9 @@ func webfetchCall(ctx *tool.Context, args map[string]any) (string, error) {
 	// 构建 HTTP 客户端：30s 超时，限制重定向次数并检查目标是否为内网地址
 	client := &http.Client{
 		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			DialContext: safeDialer.DialContext,
+		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 5 {
 				return cerr.Newf("webfetch: 重定向次数超过上限 (5)")
@@ -263,8 +288,8 @@ func isPrivateHost(host string) bool {
 	// DNS 解析主机名
 	ips, err := net.LookupIP(hostname)
 	if err != nil {
-		// 解析失败保守处理：返回 false（允许继续）
-		return false
+		// DNS 解析失败：拒绝请求（fail-closed）
+		return true
 	}
 	for _, resolvedIP := range ips {
 		if isPrivateIP(resolvedIP) {

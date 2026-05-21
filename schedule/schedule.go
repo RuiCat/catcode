@@ -43,6 +43,13 @@ func (d *IdleDetector) MarkAgentActive() {
 	d.mu.Unlock()
 }
 
+// MarkAgentIdle 重置智能体空闲计时器（使时间归零，表示智能体已空闲"很久"）
+func (d *IdleDetector) MarkAgentIdle() {
+	d.mu.Lock()
+	d.lastAgentActive = time.Time{}
+	d.mu.Unlock()
+}
+
 // IsIdle 检查是否处于空闲状态（用户无输入 AND 智能体无活动）
 func (d *IdleDetector) IsIdle() bool {
 	d.mu.RLock()
@@ -119,6 +126,8 @@ func (s *Scheduler) Check(agentBusy bool) []TaskResult {
 		s.detector.MarkAgentActive()
 		return nil
 	}
+	// 智能体空闲，重置空闲计时器以允许任务立即触发
+	s.detector.MarkAgentIdle()
 	if !s.detector.IsIdle() {
 		return nil
 	}
@@ -164,4 +173,13 @@ func (s *Scheduler) Results() []TaskResult {
 // Detector 返回空闲检测器
 func (s *Scheduler) Detector() *IdleDetector {
 	return s.detector
+}
+
+// Reload 清空现有任务并重新加载（用于 DB 任务变更后同步）
+func (s *Scheduler) Reload(loadFn func(*Scheduler) error) error {
+	s.mu.Lock()
+	s.tasks = nil
+	s.lastRun = make(map[string]time.Time)
+	s.mu.Unlock()
+	return loadFn(s)
 }

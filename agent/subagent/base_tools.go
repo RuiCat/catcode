@@ -186,6 +186,9 @@ func (sa *BaseAgent) prepareNextRound(responseCh chan<- string) {
 }
 
 // runToolLoop 驱动 SubAgent 的 tool call 迭代循环（替代原递归模式）
+// NOTE: 此函数与 agent/orchestrator/architect.go 的 runToolLoop 高度重复（约 150 行共享逻辑）。
+// TODO: 提取共享的 "工具执行循环引擎" 到 agent/tool_loop.go
+
 func (sa *BaseAgent) runToolLoop(ctx context.Context, firstStreamCh <-chan *llm.StreamEvent, responseCh chan<- string, task string) {
 	streamCh := firstStreamCh
 	const maxRetries = 1
@@ -335,6 +338,9 @@ func (sa *BaseAgent) runToolLoop(ctx context.Context, firstStreamCh <-chan *llm.
 	}
 }
 
+// NOTE: 此函数在 architect_tools.go 和 base_tools.go 中重复实现。
+// 待 D-03 (runToolLoop 去重) 完成后统一提取到共享模块。
+//
 // collectToolError 收集工具执行错误（延迟注入版本）
 func (sa *BaseAgent) collectToolError(responseCh chan<- string, category string, err error, context string) string {
 	errMsg, ok := sa.toolErrors.Add(category, err, context)
@@ -351,6 +357,10 @@ func (sa *BaseAgent) collectToolError(responseCh chan<- string, category string,
 func extractToolPath(toolName string, args map[string]any) string {
 	switch toolName {
 	case "write", "edit", "read":
+		if path, ok := args["path"].(string); ok {
+			return path
+		}
+		// 向后兼容：部分旧调用可能使用 filePath
 		if path, ok := args["filePath"].(string); ok {
 			return path
 		}
@@ -369,23 +379,4 @@ func extractToolPath(toolName string, args map[string]any) string {
 	return ""
 }
 
-// truncateStr 截断字符串到指定长度
-func truncateStr(s string, maxLen int) string {
-	runes := []rune(s)
-	if len(runes) <= maxLen {
-		return s
-	}
-	return string(runes[:maxLen]) + "..."
-}
 
-// truncateTask 截断任务描述到指定长度
-func truncateTask(task string) string {
-	if task == "" {
-		return ""
-	}
-	runes := []rune(task)
-	if len(runes) > 60 {
-		return string(runes[:60]) + "..."
-	}
-	return task
-}

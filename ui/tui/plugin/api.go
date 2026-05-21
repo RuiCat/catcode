@@ -3,9 +3,9 @@
 package plugin
 
 import (
-	"fmt"
 	"sync"
 
+	cerr "catcode/core/errors"
 	"catcode/ui/tui/component"
 )
 
@@ -45,7 +45,7 @@ func (u *uiAPIImpl) RegisterSidebarTab(key string, title string) (chan<- string,
 	defer u.mu.Unlock()
 
 	if _, exists := u.panels[key]; exists {
-		return nil, fmt.Errorf("panel %q already registered", key)
+		return nil, cerr.Newf("panel %q already registered", key)
 	}
 
 	ch := make(chan string, 1)

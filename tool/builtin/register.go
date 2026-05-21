@@ -79,7 +79,7 @@ func init() {
 	}
 	BuiltinRegistry["schedule_create"] = func(deps ToolDeps) *tool.Tool {
 		if deps.Wdb != nil {
-			return ScheduleCreateTool(deps.Wdb)
+			return ScheduleCreateTool(deps.Wdb, deps.Bus)
 		}
 		return nil
 	}
@@ -91,13 +91,13 @@ func init() {
 	}
 	BuiltinRegistry["schedule_delete"] = func(deps ToolDeps) *tool.Tool {
 		if deps.Wdb != nil {
-			return ScheduleDeleteTool(deps.Wdb)
+			return ScheduleDeleteTool(deps.Wdb, deps.Bus)
 		}
 		return nil
 	}
 	BuiltinRegistry["schedule_toggle"] = func(deps ToolDeps) *tool.Tool {
 		if deps.Wdb != nil {
-			return ScheduleToggleTool(deps.Wdb)
+			return ScheduleToggleTool(deps.Wdb, deps.Bus)
 		}
 		return nil
 	}

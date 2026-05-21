@@ -14,8 +14,10 @@ import (
 	"catcode/ai/compact"
 	"catcode/ai/llm"
 	"catcode/ai/session"
+	"catcode/core/config"
 	cerr "catcode/core/errors"
 	"catcode/core/event"
+	"catcode/core/utils"
 	"catcode/data/embed"
 	"catcode/data/storage"
 	"catcode/tool"
@@ -32,6 +34,14 @@ const maxToolCallRounds = 20
 // 1. 理解用户需求
 // 2. 编排侧加载角色和子智能体
 // 3. 通过 EventBus 协调全局工作流
+// ArchitectInterface 定义主智能体的完整接口，按消费者可拆分为：
+//   - InputProcessor — ProcessInput (TUI/REPL 使用)
+//   - SubAgentContextBuilder — BuildSubAgentContext (子智能体委派使用)
+//   - SessionProvider — GetSession (测试/调试使用)
+//   - ToolRegistrar — RegisterTool (启动配置使用)
+//   - Configurator — SetWorkDir/SetPlanEngine/InjectMemoryIndex/LoadHistory (初始化使用)
+// TODO: 在接口消费者稳定后，按 Go 接口隔离原则拆分为小接口。
+
 // ArchitectInterface 主智能体编排接口
 type ArchitectInterface interface {
 	ProcessInput(ctx context.Context, userInput string) (<-chan string, error)
@@ -85,7 +95,7 @@ type Config struct {
 // DefaultArchitectConfig 默认配置 — 优先从嵌入的 architect.yaml 获取提示词和模型配置
 func DefaultArchitectConfig() *Config {
 	cfg := &Config{
-		Model:        "deepseek:deepseek-chat",
+		Model:        config.DefaultChatModel,
 		Temperature:  0.3,
 		ContextLimit: 65536,
 		MaxOutput:    8192,
@@ -217,7 +227,7 @@ func (a *Architect) ProcessInput(ctx context.Context, userInput string) (<-chan 
 			if r := recover(); r != nil {
 				errMsg := fmt.Sprintf("\n❌ 主智能体内部错误 (panic): %v", r)
 				responseCh <- errMsg
-				a.logError("内部", "error", fmt.Sprintf("panic: %v", r), getStack(), "architect")
+				a.logError("内部", "error", fmt.Sprintf("panic: %v", r), utils.GetStack(), "architect")
 			}
 			close(responseCh)
 		}()
@@ -229,6 +239,11 @@ func (a *Architect) ProcessInput(ctx context.Context, userInput string) (<-chan 
 
 // runToolLoop 驱动 tool call 迭代循环（替代原递归模式）
 // 用 for 循环在每轮迭代后退出函数，消除递归栈累积
+// NOTE: 此函数与 agent/subagent/base_tools.go 的 runToolLoop 高度重复（约 150 行共享逻辑）。
+// 差异点：最大重试次数 (Architect=2, SubAgent=1)、
+//      processStream 签名、错误事件发布。
+// TODO: 提取共享的 "工具执行循环引擎" 到 agent/tool_loop.go
+
 func (a *Architect) runToolLoop(ctx context.Context, firstStreamCh <-chan *llm.StreamEvent, responseCh chan<- string) {
 	streamCh := firstStreamCh
 	const maxRetries = 2

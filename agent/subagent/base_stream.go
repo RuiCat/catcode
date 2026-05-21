@@ -9,6 +9,7 @@ import (
 
 	"catcode/ai/llm"
 	"catcode/ai/session"
+	cerr "catcode/core/errors"
 	"catcode/core/event"
 	"catcode/data/storage"
 )
@@ -117,7 +118,7 @@ func (sa *BaseAgent) processStream(ctx context.Context, streamCh <-chan *llm.Str
 						"error": sa.errorMsg,
 					})
 				}
-				return streamResult{}, fmt.Errorf("stream closed unexpectedly")
+				return streamResult{}, cerr.New("stream closed unexpectedly")
 			}
 			switch evt.Type {
 			case llm.StreamReasoning:
@@ -198,7 +199,7 @@ func (sa *BaseAgent) processStream(ctx context.Context, streamCh <-chan *llm.Str
 				if evt.Error != nil {
 					return streamResult{}, evt.Error
 				}
-				return streamResult{}, fmt.Errorf("未知流错误")
+				return streamResult{}, cerr.New("未知流错误")
 			}
 		}
 	}

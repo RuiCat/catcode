@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	cerr "catcode/core/errors"
 
@@ -115,7 +116,9 @@ func (m *Manager) ConnectServer(cfg ServerConfig) ([]*tool.Tool, error) {
 	}
 
 	client := NewClient(transport)
-	_, err = client.Initialize(context.Background()) // 初始化阶段无上层 context，使用 Background
+	initCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	_, err = client.Initialize(initCtx) // 初始化阶段使用带超时的 background context
 	if err != nil {
 		transport.Close()
 		return nil, cerr.Wrapf(err, "mcp: 初始化失败 [%s]", cfg.Name)

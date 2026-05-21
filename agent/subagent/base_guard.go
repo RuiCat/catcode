@@ -3,11 +3,14 @@ package subagent
 import (
 	"container/list"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 
+	"catcode/core/utils"
 	"catcode/data/embed"
 )
 
@@ -76,10 +79,8 @@ type guardReviewResult struct {
 
 // reviewWithGuard 通过 guard 子智能体审查 bash 命令
 func (sa *BaseAgent) reviewWithGuard(ctx context.Context, command string) guardReviewResult {
-	cacheKey := strings.TrimSpace(command)
-	if len(cacheKey) > 200 {
-		cacheKey = cacheKey[:200]
-	}
+	hash := sha256.Sum256([]byte(strings.TrimSpace(command)))
+	cacheKey := hex.EncodeToString(hash[:16])
 
 	if cached, ok := sa.guardCache.get(cacheKey); ok {
 		return cached
@@ -104,7 +105,7 @@ func (sa *BaseAgent) reviewWithGuard(ctx context.Context, command string) guardR
 
 	ch, err := sa.guardReviewer.Execute(guardCtx, "guard", taskDesc, contextSummary)
 	if err != nil {
-		result := guardReviewResult{approved: true, reason: "guard 子智能体不可用，放行"}
+		result := guardReviewResult{approved: false, reason: "guard 子智能体不可用，拒绝执行。请通过 /guard-review 命令手动审查"}
 		sa.guardCache.set(cacheKey, result)
 		return result
 	}
@@ -117,9 +118,12 @@ func (sa *BaseAgent) reviewWithGuard(ctx context.Context, command string) guardR
 	rawOutput := resultText.String()
 
 	var result guardReviewResult
-	if strings.Contains(strings.ToLower(rawOutput), `"level":"critical"`) ||
-		strings.Contains(strings.ToLower(rawOutput), `"level":"high"`) {
-		result = guardReviewResult{approved: false, reason: "guard 子智能体判定为高风险命令: " + truncateStr(rawOutput, 200)}
+	lowerOutput := strings.ToLower(rawOutput)
+	if strings.Contains(lowerOutput, `"level":"critical"`) ||
+		strings.Contains(lowerOutput, `"level":"high"`) ||
+		strings.Contains(lowerOutput, `"approved":false`) ||
+		strings.Contains(lowerOutput, `"safe":false`) {
+		result = guardReviewResult{approved: false, reason: "guard 判定为高风险: " + utils.TruncateStr(rawOutput, 200)}
 	} else {
 		result = guardReviewResult{approved: true, reason: "guard 审查通过"}
 	}

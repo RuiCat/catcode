@@ -1,10 +1,17 @@
+// Package manager 提供统一的 TUI 布局、焦点和鼠标控制器，
+// 封装 renderable/input/sidebar 组件的整体布局管理。
 package manager
 
 // NOTE: UIManager 已完整实现但尚未集成到主 TUI 代码中。
-// 这是 v0.9.2 ARCHITECTURE.md 规划的统一布局/焦点/鼠标控制器，
-// 计划在未来版本中替代 tui.go 中的直接 viewport 操作。
-// 当前主 TUI 的 Model 直接管理布局（tui_update.go:resizeLayout），
-// 与此 UIManager 是两套并行体系，待后续统一。
+// 当前主 TUI 在 tui_update.go:resizeLayout 中直接管理布局和鼠标事件，
+// 与此 UIManager 是两套并行体系。
+//
+// 集成方案：
+// 1. 将 Model.updateSidebarFocus/MouseMsg 等分散的鼠标处理迁移到 manager/mouse.go
+// 2. 将 Model 的 viewport 管理替换为 UIManager 的布局计算
+// 3. 逐步将 component 接口接入 UIManager
+//
+// 预计工作量：2-4 天。建议在 P2 代码质量阶段完成。
 
 import (
 	"catcode/ui/tui/component"

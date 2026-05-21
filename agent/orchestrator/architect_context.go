@@ -2,7 +2,6 @@ package orchestrator
 
 import (
 	"encoding/json"
-	"runtime"
 	"strings"
 
 	"catcode/ai/llm"
@@ -79,13 +78,6 @@ func (a *Architect) LoadHistory(messages []*storage.MessageRow) {
 	}
 }
 
-func truncate(s string, maxLen int) string {
-	runes := []rune(s)
-	if len(runes) <= maxLen {
-		return s
-	}
-	return string(runes[:maxLen]) + "..."
-}
 
 // errStack 从错误中提取堆栈跟踪（如果是 CatError），否则返回 ""
 func errStack(err error) string {
@@ -98,9 +90,3 @@ func errStack(err error) string {
 	return ""
 }
 
-// getStack 获取当前 goroutine 的堆栈跟踪
-func getStack() string {
-	buf := make([]byte, 4096)
-	n := runtime.Stack(buf, false)
-	return string(buf[:n])
-}

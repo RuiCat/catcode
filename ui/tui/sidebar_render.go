@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"github.com/charmbracelet/lipgloss"
 	"strings"
+
+	"catcode/core/utils"
 )
 
 func (m *Model) refreshSidebar() {
@@ -78,7 +80,7 @@ func (m *Model) renderPlanTab(sb *strings.Builder) {
 	progress := float64(done) / float64(total)
 
 	// 进度条
-	sb.WriteString(fmt.Sprintf("进度: %s\n\n", ProgressBar(int(progress), m.sidebarWidth-10)))
+	sb.WriteString(fmt.Sprintf("进度: %s\n\n", ProgressBar(int(progress), max(0, m.sidebarWidth-10))))
 
 	for _, t := range m.todos {
 		icon := sidebarItemPending
@@ -93,7 +95,7 @@ func (m *Model) renderPlanTab(sb *strings.Builder) {
 			icon = sidebarItemFailed
 		}
 		// 截断长文本
-		content := truncStr(t.Content, m.sidebarWidth-6)
+		content := utils.TruncateStr(t.Content, max(0, m.sidebarWidth-6))
 		sb.WriteString(fmt.Sprintf("%s %s\n", icon, content))
 	}
 }
@@ -204,7 +206,7 @@ func (m *Model) renderSessionTab(sb *strings.Builder) {
 			desc = "(无描述)"
 		}
 		sb.WriteString(fmt.Sprintf("  • %s\n", a.Name))
-		sb.WriteString(wrapText("    "+desc, m.sidebarWidth-35) + "\n")
+		sb.WriteString(wrapText("    "+desc, max(0, m.sidebarWidth-35)) + "\n")
 	}
 	sb.WriteString(fmt.Sprintf("\n共 %d 个智能体\n\n", len(m.agentList)))
 
@@ -227,14 +229,14 @@ func (m *Model) renderSessionTab(sb *strings.Builder) {
 			icon = "▶"
 		}
 		sb.WriteString(fmt.Sprintf("%s %s (%d条)\n",
-			icon, truncStr(s.Model, 15), s.MessageCount))
+			icon, utils.TruncateStr(s.Model, 15), s.MessageCount))
 	}
 }
 
 // renderTasksTab 渲染周期任务面板
 func (m *Model) renderTasksTab(sb *strings.Builder) {
 	sb.WriteString("  ⏰ 周期任务\n")
-	sb.WriteString("  " + strings.Repeat("─", m.sidebarWidth-4) + "\n\n")
+	sb.WriteString("  " + strings.Repeat("─", max(0, m.sidebarWidth-4)) + "\n\n")
 	if len(m.scheduledTasks) == 0 {
 		sb.WriteString("  📭 暂无周期任务\n")
 		sb.WriteString("  使用 schedule_create \n")
@@ -246,7 +248,7 @@ func (m *Model) renderTasksTab(sb *strings.Builder) {
 		if !t.Enabled {
 			status = "⏸"
 		}
-		sb.WriteString(fmt.Sprintf("  %s #%d %s\n", status, t.ID, truncStr(t.Name, m.sidebarWidth-10)))
+		sb.WriteString(fmt.Sprintf("  %s #%d %s\n", status, t.ID, utils.TruncateStr(t.Name, max(0, m.sidebarWidth-10))))
 		if t.Description != "" {
 			sb.WriteString(fmt.Sprintf("     %s\n", t.Description))
 		}
@@ -257,7 +259,7 @@ func (m *Model) renderTasksTab(sb *strings.Builder) {
 // renderCompanionTab 渲染猫猫状态面板
 func (m *Model) renderCompanionTab(sb *strings.Builder) {
 	sb.WriteString("  🐱 猫猫状态\n")
-	sb.WriteString("  " + strings.Repeat("─", m.sidebarWidth-4) + "\n\n")
+	sb.WriteString("  " + strings.Repeat("─", max(0, m.sidebarWidth-4)) + "\n\n")
 
 	// 心情
 	moodEmoji := map[string]string{
@@ -307,7 +309,7 @@ func (m *Model) renderCompanionTab(sb *strings.Builder) {
 
 func (m *Model) renderPluginTab(sb *strings.Builder, panel PluginPanel) {
 	sb.WriteString(boldStyle(fmt.Sprintf("%s\n", panel.Title)))
-	sb.WriteString(strings.Repeat("─", m.sidebarWidth-2) + "\n\n")
+	sb.WriteString(strings.Repeat("─", max(0, m.sidebarWidth-2)) + "\n\n")
 	if panel.Content == "" {
 		sb.WriteString(mutedStyle("(插件面板暂无内容)\n"))
 	} else {
@@ -323,7 +325,7 @@ func (m *Model) renderPluginTabByKey(sb *strings.Builder) {
 		return
 	}
 	sb.WriteString(boldStyle(fmt.Sprintf("%s\n", panel.Title)))
-	sb.WriteString(strings.Repeat("─", m.sidebarWidth-2) + "\n\n")
+	sb.WriteString(strings.Repeat("─", max(0, m.sidebarWidth-2)) + "\n\n")
 	if panel.Content == "" {
 		sb.WriteString(mutedStyle("(等待插件更新...)\n"))
 	} else {

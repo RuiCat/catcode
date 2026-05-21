@@ -36,6 +36,40 @@ func BashTool() *tool.Tool {
 	}
 }
 
+// allowedShells 允许的 shell 路径白名单
+var allowedShells = map[string]bool{
+	"/bin/bash":     true,
+	"/usr/bin/bash": true,
+	"/bin/sh":       true,
+	"/usr/bin/sh":   true,
+	"/bin/zsh":      true,
+	"/usr/bin/zsh":  true,
+}
+
+func resolveShell() string {
+	// CATCODE_SHELL 优先
+	if cs := os.Getenv("CATCODE_SHELL"); cs != "" {
+		if allowedShells[cs] {
+			return cs
+		}
+		// 也允许通过 LookPath 找到的 shell
+		if absPath, err := exec.LookPath(cs); err == nil && allowedShells[absPath] {
+			return absPath
+		}
+	}
+	// SHELL 环境变量（需白名单验证）
+	if s := os.Getenv("SHELL"); s != "" && allowedShells[s] {
+		return s
+	}
+	// 自动检测
+	for _, candidate := range []string{"bash", "zsh", "sh"} {
+		if p, err := exec.LookPath(candidate); err == nil && allowedShells[p] {
+			return p
+		}
+	}
+	return "sh"
+}
+
 func bashCall(ctx *tool.Context, args map[string]any) (string, error) {
 	command, ok := args["command"].(string)
 	if !ok || command == "" {
@@ -68,23 +102,8 @@ func bashCall(ctx *tool.Context, args map[string]any) (string, error) {
 		workDir = "."
 	}
 
-	// 选择 shell：CATCODE_SHELL > SHELL > 自动检测 > bash
-	shell := os.Getenv("CATCODE_SHELL")
-	if shell == "" {
-		shell = os.Getenv("SHELL")
-	}
-	if shell == "" {
-		// 自动检测：按优先级查找可用的 shell
-		for _, candidate := range []string{"bash", "zsh", "sh"} {
-			if _, err := exec.LookPath(candidate); err == nil {
-				shell = candidate
-				break
-			}
-		}
-	}
-	if shell == "" {
-		shell = "bash" // 最终回退
-	}
+	// 选择 shell：使用白名单验证的 resolveShell()
+	shell := resolveShell()
 	cmd := exec.Command(shell, "-c", command)
 	cmd.Dir = workDir
 	cmd.Env = filterEnv()
@@ -141,7 +160,6 @@ func filterEnv() []string {
 		"PWD": true, "SHELL": true, "TERM": true,
 		"TMPDIR": true, "TMP": true, "TEMP": true,
 		"COLORTERM": true, "DISPLAY": true, "WAYLAND_DISPLAY": true,
-		"SSH_AUTH_SOCK": true, "SSH_AGENT_PID": true,
 		"EDITOR": true, "VISUAL": true, "PAGER": true, "BROWSER": true,
 	}
 	// 前缀白名单：以这些前缀开头的变量名被允许

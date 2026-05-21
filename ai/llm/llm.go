@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -345,6 +347,12 @@ func parseSSE(ctx context.Context, r io.ReadCloser) <-chan *StreamEvent {
 		defer close(ch)
 		defer r.Close()
 
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Fprintf(os.Stderr, "[PANIC] parseSSE outer goroutine: %v\n%s\n", r, debug.Stack())
+			}
+		}()
+
 		// 行读取 goroutine —— 从阻塞的 scanner 中解耦
 		type lineResult struct {
 			line string
@@ -355,12 +363,31 @@ func parseSSE(ctx context.Context, r io.ReadCloser) <-chan *StreamEvent {
 		scanner := bufio.NewScanner(r)
 		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
-		// 读取 goroutine：持续扫描 SSE 行
+		// 内部 context 用于通知读取 goroutine 退出
+		innerCtx, innerCancel := context.WithCancel(ctx)
+		defer innerCancel()
+
+		// 读取 goroutine：持续扫描 SSE 行（支持取消）
 		go func() {
+			defer close(lineCh)
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Fprintf(os.Stderr, "[PANIC] parseSSE inner goroutine: %v\n%s\n", r, debug.Stack())
+				}
+			}()
 			for scanner.Scan() {
-				lineCh <- lineResult{line: scanner.Text()}
+				select {
+				case lineCh <- lineResult{line: scanner.Text()}:
+				case <-innerCtx.Done():
+					return
+				}
 			}
-			lineCh <- lineResult{err: scanner.Err()}
+			if err := scanner.Err(); err != nil {
+				select {
+				case lineCh <- lineResult{err: err}:
+				case <-innerCtx.Done():
+				}
+			}
 		}()
 
 		// 空闲超时计时器：每次收到有效数据重置
@@ -379,11 +406,24 @@ func parseSSE(ctx context.Context, r io.ReadCloser) <-chan *StreamEvent {
 				// 空闲超时：长时间未收到任何 SSE 数据
 				ch <- &StreamEvent{
 					Type:  StreamError,
-					Error: fmt.Errorf("API 无响应超时: %v 内未收到数据", streamIdleTimeout),
+					Error: cerr.Newf("API 无响应超时: %v 内未收到数据", streamIdleTimeout),
 				}
 				return
 
-			case lr := <-lineCh:
+			case lr, ok := <-lineCh:
+				if !ok {
+					// channel 已关闭（内部 goroutine 退出），流正常结束
+					if hasData {
+						for _, tc := range accumulatedTools {
+							ch <- &StreamEvent{
+								Type: StreamToolCall,
+								Tool: tc,
+							}
+						}
+						ch <- &StreamEvent{Type: StreamDone}
+					}
+					return
+				}
 				// 收到新数据行，重置空闲计时器
 				if !idleTimer.Stop() {
 					select {

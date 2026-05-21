@@ -82,6 +82,17 @@ type SessionStats interface {
 	MessageCount() int
 }
 
+// SessionInterface 组合了会话的所有操作接口（共 33+ 方法）。
+// 按职责可分为以下子接口，消费方应按需使用精确接口：
+//   - MessageAccessor — 消息读写 (7 methods)
+//   - ToolAccessor — 工具注册 (3 methods)
+//   - RequestBuilder — 请求构建 (2 methods)
+//   - SessionSerializer — 持久化序列化 (2 methods)
+//   - SessionConfig — 配置访问器 (17 methods, 建议进一步拆分)
+//   - SessionStats — 统计 (2 methods)
+// TODO: 将 SessionConfig 的 getter/setter 对简化为可导出字段或配置结构体，
+//       减少接口方法数量，降低 mock 复杂度。
+
 // SessionInterface LLM 会话管理接口（向后兼容的组合接口）
 type SessionInterface interface {
 	MessageAccessor

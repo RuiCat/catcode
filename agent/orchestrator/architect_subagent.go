@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"catcode/core/event"
+	"catcode/core/utils"
 )
 
 // dispatchSubAgent 分发子智能体任务（同步等待结果）
@@ -210,7 +211,7 @@ func (a *Architect) answerSubAgentQuestion(ctx context.Context, subagentType, qu
 func (a *Architect) onRoleResult(evt event.Event) {
 	roleName, _ := evt.Data["role"].(string)
 	result, _ := evt.Data["result"].(string)
-	fmt.Printf("[Architect] 角色 %s 返回结果: %s\n", roleName, truncate(result, 100))
+	fmt.Printf("[Architect] 角色 %s 返回结果: %s\n", roleName, utils.TruncateStr(result, 100))
 }
 
 func (a *Architect) onSubAgentResult(evt event.Event) {
@@ -222,5 +223,5 @@ func (a *Architect) onSubAgentResult(evt event.Event) {
 	a.mainSession.AddMessage("system",
 		fmt.Sprintf("[子智能体 %s 异步完成] 任务: %s\n结果:\n%s", agentType, task, result))
 
-	fmt.Printf("[Architect] 子智能体 %s 完成: %s\n", agentType, truncate(result, 100))
+	fmt.Printf("[Architect] 子智能体 %s 完成: %s\n", agentType, utils.TruncateStr(result, 100))
 }

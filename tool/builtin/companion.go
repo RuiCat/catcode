@@ -4,6 +4,7 @@ import (
 	"catcode/agent/role"
 	"catcode/ai/llm"
 	"catcode/ai/session"
+	"catcode/core/config"
 	cerr "catcode/core/errors"
 	"catcode/core/event"
 	"catcode/data/storage"
@@ -34,11 +35,10 @@ type companionState struct {
 const companionStateKey = "companion.state"
 
 var (
-	companionSession   *session.Session
-	companionWdb       storage.WorkspaceDB // 持久化数据库引用
-	companionStateMu   sync.Mutex
-	companionSessionMu sync.Mutex // 保护 companionSession 的并发访问
-	companionStatus    = companionState{
+	companionSession *session.Session
+	companionWdb     storage.WorkspaceDB // 持久化数据库引用
+	companionMu      sync.Mutex
+	companionStatus  = companionState{
 		Mood: "neutral", Intimacy: 70, Excitement: 50, Shyness: 30, Fatigue: 20,
 	}
 )
@@ -60,7 +60,7 @@ func LoadCompanionState(wdb storage.WorkspaceDB) {
 		return
 	}
 
-	companionStateMu.Lock()
+	companionMu.Lock()
 	// 只更新合法字段
 	if loaded.Mood != "" {
 		companionStatus.Mood = loaded.Mood
@@ -77,7 +77,7 @@ func LoadCompanionState(wdb storage.WorkspaceDB) {
 	if loaded.Fatigue >= 0 && loaded.Fatigue <= 100 {
 		companionStatus.Fatigue = loaded.Fatigue
 	}
-	companionStateMu.Unlock()
+	companionMu.Unlock()
 }
 
 // saveCompanionState 持久化当前猫猫状态到数据库
@@ -85,9 +85,9 @@ func saveCompanionState() {
 	if companionWdb == nil {
 		return
 	}
-	companionStateMu.Lock()
+	companionMu.Lock()
 	data, err := json.Marshal(companionStatus)
-	companionStateMu.Unlock()
+	companionMu.Unlock()
 	if err != nil {
 		return
 	}
@@ -118,7 +118,7 @@ func CompanionTalkTool(provider llm.Provider, roleReg role.RegistryInterface, bu
 			// 获取猫猫系统提示词
 			var systemPrompt string
 			var temperature float64 = 0.8
-			modelName := "deepseek:deepseek-chat"
+			modelName := config.DefaultChatModel
 			if inst, ok := roleReg.Get("companion"); ok {
 				systemPrompt = inst.Def.SystemPrompt
 				temperature = inst.Def.Temperature
@@ -134,13 +134,14 @@ func CompanionTalkTool(provider llm.Provider, roleReg role.RegistryInterface, bu
 			}
 
 			// 状态上下文
-			companionStateMu.Lock()
+			companionMu.Lock()
 			stateContext := fmt.Sprintf(
 				"[当前状态] 心情:%s 亲密度:%d 兴奋:%d 害羞:%d 疲劳:%d",
 				companionStatus.Mood, companionStatus.Intimacy,
 				companionStatus.Excitement, companionStatus.Shyness, companionStatus.Fatigue)
+			companionMu.Unlock()
 
-			companionSessionMu.Lock()
+			companionMu.Lock()
 			if companionSession == nil {
 				companionSession = session.New("companion-main", modelName, systemPrompt)
 			}
@@ -148,17 +149,15 @@ func CompanionTalkTool(provider llm.Provider, roleReg role.RegistryInterface, bu
 			companionSession.AddMessage("system", stateContext)
 			companionSession.AddMessage("user", message)
 			sess := companionSession
-			companionSessionMu.Unlock()
+			companionMu.Unlock()
 			req, err := sess.BuildRequest()
 			if err != nil {
-				companionStateMu.Unlock()
 				return fmt.Sprintf("喵~ 猫猫有点迷糊了喵 (´;ω;`)"), nil
 			}
-			companionSessionMu.Lock()
+			companionMu.Lock()
 			sess.Messages = sess.Messages[:len(sess.Messages)-2]
 			sess.AddMessage("user", message)
-			companionSessionMu.Unlock()
-			companionStateMu.Unlock()
+			companionMu.Unlock()
 			req.Stream = false
 			req.Temperature = temperature
 			req.MaxTokens = 256
@@ -187,9 +186,9 @@ func CompanionTalkTool(provider llm.Provider, roleReg role.RegistryInterface, bu
 
 			// 尝试解析 JSON 状态更新并持久化
 			if newState := tryParseState(rawResponse); newState != nil {
-				companionStateMu.Lock()
+				companionMu.Lock()
 				companionStatus = *newState
-				companionStateMu.Unlock()
+				companionMu.Unlock()
 				go func() {
 					defer func() {
 						if r := recover(); r != nil {
@@ -200,10 +199,10 @@ func CompanionTalkTool(provider llm.Provider, roleReg role.RegistryInterface, bu
 				}()
 			}
 
-			companionSessionMu.Lock()
+			companionMu.Lock()
 			sess.AddMessage("assistant", answer)
 			sess.TrimMessages(20)
-			companionSessionMu.Unlock()
+			companionMu.Unlock()
 
 			publishCompanionStatus(bus, answer)
 
@@ -230,7 +229,14 @@ func tryParseState(raw string) *companionState {
 	if err := json.Unmarshal([]byte(jsonStr), &full); err != nil {
 		return nil
 	}
+	// 合理性验证
 	if full.Mood == "" {
+		return nil
+	}
+	if full.Intimacy < 0 || full.Intimacy > 100 ||
+		full.Excitement < 0 || full.Excitement > 100 ||
+		full.Shyness < 0 || full.Shyness > 100 ||
+		full.Fatigue < 0 || full.Fatigue > 100 {
 		return nil
 	}
 	return &companionState{
@@ -241,9 +247,9 @@ func tryParseState(raw string) *companionState {
 
 // publishCompanionStatus 发布猫猫状态事件
 func publishCompanionStatus(bus event.EventBus, answer string) {
-	companionStateMu.Lock()
+	companionMu.Lock()
 	s := companionStatus
-	companionStateMu.Unlock()
+	companionMu.Unlock()
 
 	if bus != nil {
 		bus.PublishAsync(event.EventCompanionRespond, map[string]any{

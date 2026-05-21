@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
+	"sync"
 	"time"
 )
 
@@ -18,6 +20,7 @@ type DirWatcher struct {
 	interval time.Duration
 	stopCh   chan struct{}
 	modTimes map[string]time.Time
+	mu       sync.RWMutex
 }
 
 // NewDirWatcher 创建目录监视器
@@ -37,6 +40,11 @@ func (dw *DirWatcher) Start(onChange func(ChangeEvent)) error {
 	dw.scanFiles()
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Fprintf(os.Stderr, "[PANIC] DirWatcher goroutine: %v\n%s\n", r, debug.Stack())
+			}
+		}()
 		ticker := time.NewTicker(dw.interval)
 		defer ticker.Stop()
 
@@ -78,7 +86,9 @@ func (dw *DirWatcher) scanFiles() {
 		path := filepath.Join(dw.dir, entry.Name())
 		info, err := entry.Info()
 		if err == nil {
+			dw.mu.Lock()
 			dw.modTimes[path] = info.ModTime()
+			dw.mu.Unlock()
 		}
 	}
 }
@@ -109,9 +119,13 @@ func (dw *DirWatcher) checkDirChanges(onChange func(ChangeEvent)) {
 			continue
 		}
 
+		dw.mu.RLock()
 		lastMod, exists := dw.modTimes[path]
+		dw.mu.RUnlock()
 		if !exists || info.ModTime().After(lastMod) {
+			dw.mu.Lock()
 			dw.modTimes[path] = info.ModTime()
+			dw.mu.Unlock()
 			onChange(ChangeEvent{
 				Source: fmt.Sprintf("dir:%s", dw.dir),
 				Keys:   []string{path},
@@ -120,13 +134,22 @@ func (dw *DirWatcher) checkDirChanges(onChange func(ChangeEvent)) {
 	}
 
 	// 检查删除的文件
+	dw.mu.RLock()
+	var deletedPaths []string
 	for path := range dw.modTimes {
 		if !currentFiles[path] {
-			delete(dw.modTimes, path)
-			onChange(ChangeEvent{
-				Source: fmt.Sprintf("dir:%s", dw.dir),
-				Keys:   []string{path},
-			})
+			deletedPaths = append(deletedPaths, path)
 		}
+	}
+	dw.mu.RUnlock()
+
+	for _, path := range deletedPaths {
+		dw.mu.Lock()
+		delete(dw.modTimes, path)
+		dw.mu.Unlock()
+		onChange(ChangeEvent{
+			Source: fmt.Sprintf("dir:%s", dw.dir),
+			Keys:   []string{path},
+		})
 	}
 }

@@ -573,3 +573,14 @@ func ToolFactory(
 `DBQueryTool` 的查询结果会自动过滤敏感信息：当查询 `settings` 表时，若 `key` 列的值以 `.api_key` 结尾或等于 `api_key`，对应的 `value` 列将被替换为 `[敏感信息已隐藏]`，防止 API Key 等敏感数据通过查询结果泄露给 LLM。
 
 > **注意**：`db_*`、`go_run`、`schedule_*` 系列工具在 `wdb` 为 `nil` 时返回 `nil`，不会暴露给 LLM。`memory_*` 系列同理，依赖 `memoryService` 非空。`plan_enter`/`plan_exit` 仅主智能体使用，工厂返回 `nil`，由 `main.go` 直接创建 `PlanEnterTool`/`PlanExitTool` 实例注册。
+
+### 路径安全验证
+
+`builtin/path_guard.go` 提供 `ResolveAndCheckPath(rawPath, workDir)` 统一函数，被所有文件操作工具使用：
+
+- **WorkDir 空检查**：拒绝工作目录未设置时的所有文件操作
+- **符号链接解析**：通过 `filepath.EvalSymlinks` 防止符号链接绕过工作区边界
+- **文件创建兼容**：当目标文件不存在时（如 write 创建新文件），回退到解析父目录
+- **边界验证**：使用 `strings.HasPrefix` 确保解析后的绝对路径在工作区范围内
+
+所有文件操作工具（read、write、edit、diff、grep、glob、apply_patch）均已集成此验证。

@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"catcode/ai/llm"
+
+	cerr "catcode/core/errors"
 )
 
 // StreamResult processStream 的处理结果
@@ -27,7 +29,7 @@ func (a *Architect) processStream(ctx context.Context, streamCh <-chan *llm.Stre
 			return StreamResult{}, ctx.Err()
 		case evt, ok := <-streamCh:
 			if !ok {
-				return StreamResult{}, fmt.Errorf("stream closed unexpectedly")
+				return StreamResult{}, cerr.New("stream closed unexpectedly")
 			}
 
 			switch evt.Type {
@@ -85,7 +87,7 @@ func (a *Architect) processStream(ctx context.Context, streamCh <-chan *llm.Stre
 				if evt.Error != nil {
 					return StreamResult{}, evt.Error
 				}
-				return StreamResult{}, fmt.Errorf("stream error")
+				return StreamResult{}, cerr.New("stream error")
 			}
 		}
 	}

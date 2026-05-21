@@ -6,8 +6,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -64,11 +67,28 @@ func NewStdioTransport(command string, args []string, env map[string]string) (Tr
 	var stderrBuf bytes.Buffer
 	cmd.Stderr = &stderrBuf
 
-	if err := cmd.Start(); err != nil {
-		if stderrBuf.Len() > 0 {
-			return nil, cerr.Wrapf(err, "mcp: 启动子进程失败 (stderr: %s)", stderrBuf.String())
+	startDone := make(chan error, 1)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Fprintf(os.Stderr, "[PANIC] mcp start goroutine: %v\n%s\n", r, debug.Stack())
+			}
+		}()
+		startDone <- cmd.Start()
+	}()
+
+	select {
+	case err := <-startDone:
+		if err != nil {
+			stdin.Close()
+			if stderrBuf.Len() > 0 {
+				return nil, cerr.Wrapf(err, "mcp: 子进程启动失败 (stderr: %s)", stderrBuf.String())
+			}
+			return nil, cerr.Wrap(err, "mcp: 子进程启动失败")
 		}
-		return nil, cerr.Wrap(err, "mcp: 启动子进程失败")
+	case <-time.After(30 * time.Second):
+		stdin.Close()
+		return nil, cerr.New("mcp: 子进程启动超时 (30s)")
 	}
 
 	return &StdioTransport{
@@ -114,7 +134,14 @@ func (t *StdioTransport) Close() error {
 	t.stdin.Close()
 
 	done := make(chan error, 1)
-	go func() { done <- t.cmd.Wait() }()
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Fprintf(os.Stderr, "[PANIC] mcp cmd.Wait goroutine: %v\n%s\n", r, debug.Stack())
+			}
+		}()
+		done <- t.cmd.Wait()
+	}()
 	select {
 	case err := <-done:
 		if err != nil {
@@ -168,7 +195,7 @@ func (c *Client) Initialize(ctx context.Context) (*InitializeResult, error) {
 
 	paramsJSON, _ := json.Marshal(params)
 	id := c.nextID()
-	resp, err := c.call(id, "initialize", paramsJSON)
+	resp, err := c.call(ctx, id, "initialize", paramsJSON)
 	if err != nil {
 		return nil, cerr.Wrap(err, "mcp: initialize 失败")
 	}
@@ -194,7 +221,9 @@ func (c *Client) ListTools() ([]ToolDef, error) {
 	defer c.mu.Unlock()
 
 	id := c.nextID()
-	resp, err := c.call(id, "tools/list", nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	resp, err := c.call(ctx, id, "tools/list", nil)
 	if err != nil {
 		return nil, cerr.Wrap(err, "mcp: tools/list 失败")
 	}
@@ -214,7 +243,9 @@ func (c *Client) CallTool(name string, args map[string]any) (*CallToolResult, er
 	params := CallToolParams{Name: name, Arguments: args}
 	paramsJSON, _ := json.Marshal(params)
 	id := c.nextID()
-	resp, err := c.call(id, "tools/call", paramsJSON)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	resp, err := c.call(ctx, id, "tools/call", paramsJSON)
 	if err != nil {
 		return nil, cerr.Wrapf(err, "mcp: tools/call %s 失败", name)
 	}
@@ -227,7 +258,7 @@ func (c *Client) CallTool(name string, args map[string]any) (*CallToolResult, er
 }
 
 // call 发送请求并等待响应
-func (c *Client) call(id int64, method string, params json.RawMessage) (*JSONRPCMessage, error) {
+func (c *Client) call(ctx context.Context, id int64, method string, params json.RawMessage) (*JSONRPCMessage, error) {
 	req := &JSONRPCMessage{
 		JSONRPC: "2.0",
 		ID:      id,
@@ -240,6 +271,11 @@ func (c *Client) call(id int64, method string, params json.RawMessage) (*JSONRPC
 
 	const maxRecvLoops = 100
 	for i := 0; i < maxRecvLoops; i++ {
+		select {
+		case <-ctx.Done():
+			return nil, cerr.Wrap(ctx.Err(), "mcp: 调用被取消")
+		default:
+		}
 		resp, err := c.transport.Receive()
 		if err != nil {
 			return nil, err

@@ -10,6 +10,7 @@ import (
 
 	"catcode/agent/orchestrator"
 	"catcode/core/config"
+	"catcode/core/event"
 	"catcode/tool/builtin"
 	"catcode/ui/tui"
 
@@ -212,7 +213,20 @@ func loadTUIState(app *Application, arch orchestrator.ArchitectInterface) {
 			}
 		}
 
-		agentBusy := app.AgentPool != nil && app.AgentPool.ActiveCount() > 0
+		// 同步周期任务列表到侧边栏
+		if tasks, err := app.Wdb.ListScheduledTasks(); err == nil {
+			infos := make([]tui.ScheduledTaskInfo, 0, len(tasks))
+			for _, t := range tasks {
+				infos = append(infos, tui.ScheduledTaskInfo{
+					ID: t.ID, Name: t.Name, Description: t.Description,
+					IntervalSeconds: t.IntervalSeconds, Enabled: t.Enabled,
+					RunOnce: t.RunOnce,
+				})
+			}
+			app.TUIModel.Update(tui.UpdateTasksMsg{Tasks: infos})
+		}
+
+		agentBusy := (app.AgentPool != nil && app.AgentPool.ActiveCount() > 0) || app.ArchBusy.Load()
 		results := app.Scheduler.Check(agentBusy)
 		for _, r := range results {
 			if r.Error != nil {
@@ -223,10 +237,20 @@ func loadTUIState(app *Application, arch orchestrator.ArchitectInterface) {
 			}
 			// 空闲任务结果输出到日志
 			if r.Output != "" && app.TUIProgram != nil {
-				app.TUIProgram.Send(tui.UpdateLogMsg{
-					Time:    time.Now().Format("15:04:05"),
-					Content: "⏰ " + r.Name + ": " + r.Output,
-					Level:   "info",
+				go func(output, name string) {
+					app.TUIProgram.Send(tui.UpdateLogMsg{
+						Time:    time.Now().Format("15:04:05"),
+						Content: "⏰ " + name + ": " + output,
+						Level:   "info",
+					})
+				}(r.Output, r.Name)
+			}
+
+			// 通过事件总线触发主智能体执行任务
+			if r.Output != "" {
+				app.Bus.Publish(event.EventScheduledTaskTrigger, map[string]any{
+					"name":        r.Name,
+					"description": r.Output,
 				})
 			}
 		}
@@ -243,6 +267,7 @@ func loadTUIState(app *Application, arch orchestrator.ArchitectInterface) {
 			infos[i] = tui.ScheduledTaskInfo{
 				ID: t.ID, Name: t.Name, Description: t.Description,
 				IntervalSeconds: t.IntervalSeconds, Enabled: enabled,
+				RunOnce: t.RunOnce,
 			}
 		}
 		app.TUIModel.Update(tui.UpdateTasksMsg{Tasks: infos})

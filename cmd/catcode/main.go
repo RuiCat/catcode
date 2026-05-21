@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"catcode/agent/orchestrator"
@@ -41,6 +42,7 @@ type Application struct {
 	PlanEngine    plan.PlanEngineInterface
 	Provider      llm.Provider
 	Scheduler     *schedule.Scheduler
+	ArchBusy      atomic.Bool
 	PluginMgr     *plugin.Manager
 	McpMgr        *mcp.Manager
 	UIAPI         uiPlugin.UIAPI
@@ -94,6 +96,11 @@ func main() {
 	app.WorkDir = workDir
 	fmt.Printf("  📁 工作区              %s\n", workDir)
 
+	// 0.5 初始化机器密钥（用于 API Key 加密增强安全）
+	if err := storage.InitMachineSecret(workDir); err != nil {
+		fmt.Fprintf(os.Stderr, "  ⚠ 机器密钥初始化失败: %v\n", err)
+	}
+
 	// 1. 打开工作区数据库
 	wdb, isNew, err := storage.OpenWorkspace(workDir)
 	if err != nil {
@@ -141,8 +148,8 @@ func main() {
 	// 3. 初始化事件总线
 	app.Bus = event.NewBus()
 
-	// 3.1 初始化空闲调度器（30秒无操作触发）
-	app.Scheduler = schedule.NewScheduler(schedule.NewIdleDetector(30 * time.Second))
+	// 3.1 初始化空闲调度器（2秒无操作触发）
+	app.Scheduler = schedule.NewScheduler(schedule.NewIdleDetector(2 * time.Second))
 	schedule.LoadDBTasks(app.Scheduler, app.Wdb, func() bool {
 		return app.AgentPool != nil && app.AgentPool.ActiveCount() > 0
 	})
@@ -284,7 +291,7 @@ func main() {
 					if app.Wdb != nil {
 						buf := make([]byte, 2048)
 						n := runtime.Stack(buf, false)
-						_ = app.Wdb.LogError("网络", "warning", fmt.Sprintf("MCP %s: %v", srv.Name, err), string(buf[:n]), "startup", "")
+						_ = app.Wdb.LogError("网络", "warning", fmt.Sprintf("MCP %s: %v", srv.Name, err), string(buf[:n]), "startup", "") // 日志持久化失败不影响主流程
 					}
 					continue
 				}
@@ -297,7 +304,7 @@ func main() {
 	}
 
 	// 10. 注册事件回调
-	registerEventCallbacks(app)
+	registerEventCallbacks(app, arch)
 
 	// ── 就绪状态 ──
 	companionCount := 0

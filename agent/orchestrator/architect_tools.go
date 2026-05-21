@@ -10,6 +10,7 @@ import (
 	"catcode/ai/llm"
 	cerr "catcode/core/errors"
 	"catcode/core/event"
+	"catcode/core/utils"
 	"catcode/tool"
 )
 
@@ -185,6 +186,9 @@ func (a *Architect) checkPermission(toolName string) tool.PermissionLevel {
 // 统一错误处理 — LLM 驱动自我纠正
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+// NOTE: 此函数在 architect_tools.go 和 base_tools.go 中重复实现。
+// 待 D-03 (runToolLoop 去重) 完成后统一提取到共享模块。
+//
 // collectToolError 收集工具执行错误（延迟注入版本）
 // 与 handleError 相同逻辑，但不向 session 注入 system 消息，
 // 而是返回错误描述字符串供调用方统一注入，避免破坏 tool 消息配对
@@ -237,9 +241,9 @@ func (a *Architect) logError(category, severity, message, stackTrace, source str
 		return
 	}
 	if stackTrace == "" {
-		stackTrace = getStack()
+		stackTrace = utils.GetStack()
 	}
-	_ = a.wdb.LogError(category, severity, message, stackTrace, source, a.mainSession.ID)
+	_ = a.wdb.LogError(category, severity, message, stackTrace, source, a.mainSession.ID) // 日志持久化失败不影响主流程
 }
 
 // resetErrors 每轮用户请求开始前重置计数

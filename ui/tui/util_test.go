@@ -1,46 +1,53 @@
 package tui
 
-import "testing"
+import (
+	"testing"
+
+	"catcode/core/utils"
+)
 
 func TestTruncStr_Shorter(t *testing.T) {
-	result := truncStr("hello", 10)
+	result := utils.TruncateStr("hello", 10)
 	if result != "hello" {
-		t.Errorf("truncStr(%q, 10) = %q, want %q", "hello", result, "hello")
+		t.Errorf("utils.TruncateStr(%q, 10) = %q, want %q", "hello", result, "hello")
 	}
 }
 
 func TestTruncStr_Exactly(t *testing.T) {
-	result := truncStr("hello", 5)
+	result := utils.TruncateStr("hello", 5)
 	if result != "hello" {
-		t.Errorf("truncStr(%q, 5) = %q, want %q", "hello", result, "hello")
+		t.Errorf("utils.TruncateStr(%q, 5) = %q, want %q", "hello", result, "hello")
 	}
 }
 
 func TestTruncStr_Longer(t *testing.T) {
-	result := truncStr("hello world", 5)
-	if result != "hello…" {
-		t.Errorf("truncStr(%q, 5) = %q, want %q", "hello world", result, "hello…")
+	result := utils.TruncateStr("hello world", 5)
+	if result != "hello..." {
+		t.Errorf("utils.TruncateStr(%q, 5) = %q, want %q", "hello world", result, "hello…")
 	}
 }
 
 func TestTruncStr_Empty(t *testing.T) {
-	result := truncStr("", 5)
+	result := utils.TruncateStr("", 5)
 	if result != "" {
-		t.Errorf("truncStr(%q, 5) = %q, want empty", "", result)
+		t.Errorf("utils.TruncateStr(%q, 5) = %q, want empty", "", result)
 	}
 }
 
 func TestTruncStr_Zero(t *testing.T) {
-	result := truncStr("hello", 0)
-	if result != "…" {
-		t.Errorf("truncStr(%q, 0) = %q, want %q", "hello", result, "…")
+	result := utils.TruncateStr("hello", 0)
+	if result != "..." {
+		t.Errorf("utils.TruncateStr(%q, 0) = %q, want %q", "hello", result, "…")
 	}
 }
 
 func TestTruncStr_Unicode(t *testing.T) {
-	result := truncStr("你好世界", 2)
-	if result != "你好…" {
-		t.Errorf("truncStr(%q, 2) = %q, want %q", "你好世界", result, "你好…")
+	// utils.TruncateStr now uses rune-based slicing (N-07 UTF-8 safe)
+	// "你好世界" has 4 runes, max=2 truncates to first 2 runes + "..."
+	result := utils.TruncateStr("你好世界", 2)
+	expected := "你好..."
+	if result != expected {
+		t.Errorf("utils.TruncateStr(%q, 2) = %q, want %q", "你好世界", result, expected)
 	}
 }
 

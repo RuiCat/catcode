@@ -39,7 +39,7 @@ type WorkspaceDB interface {
 	LogError(category, severity, message, stackTrace, source, convID string) error
 	GetAllAgentDefinitions() ([]*AgentRow, error)
 	MarkTaskRun(id int64) error
-	CreateScheduledTask(name, description string, intervalSec int) (*ScheduledTask, error)
+	CreateScheduledTask(name, description string, intervalSec int, runOnce bool) (*ScheduledTask, error)
 	DeleteScheduledTask(id int64) error
 	UpdateScheduledTask(id int64, name, description string, intervalSec int, enabled bool) error
 	GetAllSettingsMap() map[string]SettingEntry

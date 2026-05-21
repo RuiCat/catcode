@@ -3,11 +3,16 @@ package mcp
 import (
 	"bufio"
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
+	"syscall"
+	"time"
 
 	cerr "catcode/core/errors"
 )
@@ -38,7 +43,29 @@ func NewHTTPTransport(baseURL string, headers map[string]string) (Transport, err
 	t := &HTTPTransport{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		headers: headers,
-		client:  &http.Client{},
+		client: &http.Client{
+			Timeout: 30 * time.Second,
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					MinVersion: tls.VersionTLS12,
+				},
+				DialContext: (&net.Dialer{
+					Timeout:   10 * time.Second,
+					KeepAlive: 30 * time.Second,
+					Control: func(network, address string, c syscall.RawConn) error {
+						host, _, err := net.SplitHostPort(address)
+						if err != nil {
+							return err
+						}
+						ip := net.ParseIP(host)
+						if ip != nil && isPrivateIP(ip) {
+							return fmt.Errorf("禁止连接内网地址: %s", ip)
+						}
+						return nil
+					},
+				}).DialContext,
+			},
+		},
 		msgCh:   make(chan *JSONRPCMessage, 32),
 		done:    make(chan struct{}),
 	}
@@ -202,6 +229,25 @@ func (t *HTTPTransport) Receive() (*JSONRPCMessage, error) {
 		return nil, io.EOF
 	}
 	return msg, nil
+}
+
+// isPrivateIP 检查 IP 地址是否为私有/内网地址
+func isPrivateIP(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	if ip4 := ip.To4(); ip4 != nil {
+		if ip4[0] == 10 || ip4[0] == 127 ||
+			(ip4[0] == 172 && ip4[1] >= 16 && ip4[1] <= 31) ||
+			(ip4[0] == 192 && ip4[1] == 168) ||
+			(ip4[0] == 169 && ip4[1] == 254) {
+			return true
+		}
+	}
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+		return true
+	}
+	return false
 }
 
 // Close 关闭传输

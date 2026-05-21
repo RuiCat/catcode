@@ -13,6 +13,7 @@ type ScheduledTask struct {
 	Description     string
 	IntervalSeconds int
 	Enabled         bool
+	RunOnce         bool
 	LastRun         *time.Time
 	NextRun         *time.Time
 	CreatedAt       time.Time
@@ -22,7 +23,7 @@ type ScheduledTask struct {
 // ListScheduledTasks 列出所有周期任务
 func (w *workspaceDBImpl) ListScheduledTasks() ([]*ScheduledTask, error) {
 	rows, err := w.db.Query(`
-		SELECT id, name, description, interval_seconds, enabled,
+		SELECT id, name, description, interval_seconds, enabled, run_once,
 			last_run, next_run, created_at, updated_at
 		FROM scheduled_tasks ORDER BY enabled DESC, created_at DESC
 	`)
@@ -35,12 +36,14 @@ func (w *workspaceDBImpl) ListScheduledTasks() ([]*ScheduledTask, error) {
 	for rows.Next() {
 		var t ScheduledTask
 		var enabled int
+		var runOnce int
 		var lastRun, nextRun *time.Time
 		if err := rows.Scan(&t.ID, &t.Name, &t.Description, &t.IntervalSeconds,
-			&enabled, &lastRun, &nextRun, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			&enabled, &runOnce, &lastRun, &nextRun, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			continue
 		}
 		t.Enabled = enabled != 0
+		t.RunOnce = runOnce != 0
 		t.LastRun = lastRun
 		t.NextRun = nextRun
 		result = append(result, &t)
@@ -49,11 +52,15 @@ func (w *workspaceDBImpl) ListScheduledTasks() ([]*ScheduledTask, error) {
 }
 
 // CreateScheduledTask 创建周期任务
-func (w *workspaceDBImpl) CreateScheduledTask(name, description string, intervalSec int) (*ScheduledTask, error) {
+func (w *workspaceDBImpl) CreateScheduledTask(name, description string, intervalSec int, runOnce bool) (*ScheduledTask, error) {
+	runOnceVal := 0
+	if runOnce {
+		runOnceVal = 1
+	}
 	result, err := w.db.Exec(`
-		INSERT INTO scheduled_tasks (name, description, interval_seconds)
-		VALUES (?, ?, ?)
-	`, name, description, intervalSec)
+		INSERT INTO scheduled_tasks (name, description, interval_seconds, run_once)
+		VALUES (?, ?, ?, ?)
+	`, name, description, intervalSec, runOnceVal)
 	if err != nil {
 		return nil, err
 	}
@@ -61,6 +68,7 @@ func (w *workspaceDBImpl) CreateScheduledTask(name, description string, interval
 	return &ScheduledTask{
 		ID: id, Name: name, Description: description,
 		IntervalSeconds: intervalSec, Enabled: true,
+		RunOnce: runOnce,
 		CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}, nil
 }

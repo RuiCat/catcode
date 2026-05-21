@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"catcode/agent/orchestrator"
+	cerr "catcode/core/errors"
 	"catcode/tool"
 	"catcode/tool/builtin"
 )
@@ -87,7 +88,7 @@ func registerBuiltinTools(arch orchestrator.ArchitectInterface, app *Application
 				if app.PlanEngine != nil {
 					_, err := app.PlanEngine.CreatePlanFromJSON(desc, todosJSON)
 					if err != nil {
-						return "", fmt.Errorf("创建规划失败: %w", err)
+						return "", cerr.Wrap(err, "创建规划失败")
 					}
 					return "✓ 规划已创建", nil
 				}

@@ -37,16 +37,13 @@ func readCall(ctx *tool.Context, args map[string]any) (string, error) {
 	if !ok || path == "" {
 		return "", cerr.Newf("read: path 参数必填")
 	}
-	if !filepath.IsAbs(path) && ctx.WorkDir != "" {
+
+	if !filepath.IsAbs(path) {
 		path = filepath.Join(ctx.WorkDir, path)
 	}
-	cleanPath := filepath.Clean(path)
-	resolvedPath, err := filepath.EvalSymlinks(cleanPath)
+	resolvedPath, err := ResolveAndCheckPath(path, ctx.WorkDir)
 	if err != nil {
-		return "", cerr.Wrap(err, "read: 无法解析路径")
-	}
-	if !strings.HasPrefix(resolvedPath, ctx.WorkDir) {
-		return "", cerr.Newf("read: 路径超出工作区范围")
+		return "", err
 	}
 	info, err := os.Stat(resolvedPath)
 	if err != nil {

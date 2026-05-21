@@ -692,10 +692,10 @@ type Loader struct {
 | 函数 | 文件 | 用途 |
 |------|------|------|
 | `mergeAgentDefs(dbDefs, fileDefs)` | `merge.go` | 按三层优先级合并 DB 和文件定义 |
-| `discoverUserRoleFiles(workDir)` | `role.go` | 扫描 `.catcode/roles/` 目录 |
-| `loadDefs(wdb, workDir)` | `role.go` | 从 DB + 文件系统加载合并后的定义 |
-| `registerTriggers(inst)` | `role.go` | 向 EventBus 注册角色的触发器 |
+| `discoverUserRoleFiles(workDir)` | `role_registry.go:109` | 扫描 `.catcode/roles/` 目录 |
+| `loadDefs(wdb, workDir)` | `role_registry.go:91` | 从 DB + 文件系统加载合并后的定义 |
+| `registerTriggers(inst)` | `role_registry.go:259` | 向 EventBus 注册角色的触发器 |
 | `loadEmbedded()` | `role.go` | 从嵌入 FS 加载内置角色 |
 | `parseBytes(data, filename)` | `role.go` | 按扩展名分发解析 |
-| `isRoleFile(path)` | `role.go` | 判断文件是否为角色定义文件 |
-| `mergeRoles(roles, newDef)` | `role.go` | 覆盖同名角色（用于 Loader.Discover） |
+| `isRoleFile(path)` | `role_parser.go:12` | 判断文件是否为角色定义文件 |
+| `mergeRoles(roles, newDef)` | `role_parser.go:18` | 覆盖同名角色（用于 Loader.Discover） |

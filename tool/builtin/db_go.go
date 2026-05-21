@@ -1,6 +1,7 @@
 package builtin
 
 import (
+	"database/sql"
 	"fmt"
 	"reflect"
 	"strings"
@@ -32,7 +33,10 @@ func DBQueryTool(wdb storage.WorkspaceDB) *tool.Tool {
 			}),
 		},
 		Call: func(ctx *tool.Context, args map[string]any) (string, error) {
-			sql, _ := args["sql"].(string)
+			sql, ok := args["sql"].(string)
+			if !ok || sql == "" {
+				return "", cerr.Newf("db_query: sql 参数必填")
+			}
 			sql = strings.TrimSpace(sql)
 			if !strings.HasPrefix(strings.ToUpper(sql), "SELECT") {
 				return "", cerr.Newf("db_query: 仅支持 SELECT 查询")
@@ -128,12 +132,21 @@ func DBExecTool(wdb storage.WorkspaceDB) *tool.Tool {
 			}),
 		},
 		Call: func(ctx *tool.Context, args map[string]any) (string, error) {
-			rawSQL, _ := args["sql"].(string)
+			rawSQL, ok := args["sql"].(string)
+			if !ok || rawSQL == "" {
+				return "", cerr.Newf("db_exec: sql 参数必填")
+			}
 			upperSQL := strings.TrimSpace(strings.ToUpper(rawSQL))
 			if strings.HasPrefix(upperSQL, "DROP") ||
 				strings.HasPrefix(upperSQL, "ALTER") ||
 				strings.HasPrefix(upperSQL, "TRUNCATE") {
 				return "", cerr.Newf("db_exec: DROP/ALTER/TRUNCATE 操作被禁止")
+			}
+			// 禁止修改 settings 表中的敏感配置
+			if (strings.Contains(upperSQL, "UPDATE") || strings.Contains(upperSQL, "DELETE") ||
+				strings.Contains(upperSQL, "INSERT") || strings.Contains(upperSQL, "REPLACE")) &&
+				strings.Contains(upperSQL, "SETTINGS") {
+				return "", cerr.Newf("db_exec: 禁止修改 settings 表。请使用专门的配置工具")
 			}
 			if strings.HasPrefix(upperSQL, "DELETE") && !strings.Contains(upperSQL, "WHERE") {
 				return "", cerr.Newf("db_exec: DELETE 必须包含 WHERE 条件")
@@ -177,6 +190,7 @@ func DBTablesTool(wdb storage.WorkspaceDB) *tool.Tool {
 			for _, name := range tableNames {
 				result.WriteString(fmt.Sprintf("\n📋 %s\n", name))
 				// 获取列信息（此时外层 rows 已关闭，不会死锁）
+				// PRAGMA table_info 的参数 name 来自 sqlite_master 表，是受信的表名
 				colRows, err := wdb.DB().Query(fmt.Sprintf("PRAGMA table_info(%s)", name))
 				if err != nil {
 					continue
@@ -238,6 +252,23 @@ func executeGoScript(script string, wdb storage.WorkspaceDB) (string, error) {
 	return runYaegiScript(script, wdb)
 }
 
+// restrictedWDB 包装 WorkspaceDB，限制 yaegi 脚本只能执行 SELECT 查询
+type restrictedWDB struct {
+	wdb storage.WorkspaceDB
+}
+
+func (r *restrictedWDB) Query(query string, args ...any) (*sql.Rows, error) {
+	upperSQL := strings.TrimSpace(strings.ToUpper(query))
+	if !strings.HasPrefix(upperSQL, "SELECT") && !strings.HasPrefix(upperSQL, "PRAGMA") {
+		return nil, cerr.Newf("yaegi 脚本仅允许 SELECT/PRAGMA 查询")
+	}
+	return r.wdb.DB().Query(query, args...)
+}
+
+func (r *restrictedWDB) QueryRow(query string, args ...any) *sql.Row {
+	return r.wdb.DB().QueryRow(query, args...)
+}
+
 // runYaegiScript 实际的 yaegi 执行逻辑
 func runYaegiScript(script string, wdb storage.WorkspaceDB) (string, error) {
 	i := interp.New(interp.Options{Unrestricted: false})
@@ -246,7 +277,7 @@ func runYaegiScript(script string, wdb storage.WorkspaceDB) (string, error) {
 	if wdb != nil {
 		i.Use(interp.Exports{
 			"catcode/wdb/wdb": {
-				"DB": reflect.ValueOf(wdb),
+				"DB": reflect.ValueOf(&restrictedWDB{wdb: wdb}),
 			},
 		})
 	}

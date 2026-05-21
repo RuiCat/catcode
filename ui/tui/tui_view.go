@@ -21,7 +21,7 @@ func (m *Model) View() string {
 
 	m.status.SetWidth(m.width)
 	m.input.SetWidth(m.width)
-	m.chat.SetWidth(m.width - m.sidebarWidth - 2)
+	m.chat.SetWidth(max(1, m.width - m.sidebarWidth - 2))
 	m.side.SetWidth(m.sidebarWidth)
 	status := m.status.View()
 
@@ -51,7 +51,7 @@ func (m *Model) View() string {
 				sideView += "\n" + bgBlank
 			}
 		} else if chatLines < sideLines {
-			chatBlank := lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", m.width-m.sidebarWidth-2))
+			chatBlank := lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", max(0, m.width-m.sidebarWidth-2)))
 			for i := chatLines; i < sideLines; i++ {
 				chatView += "\n" + chatBlank
 			}

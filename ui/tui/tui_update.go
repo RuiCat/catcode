@@ -5,6 +5,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"strings"
+	"catcode/core/utils"
 )
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -220,11 +221,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.pendingInput = input
 				m.textarea.Reset()
 				m.addMsg(MsgSystem, "⏳ 消息已缓存 (当前响应完成后发送) ")
-				m.addLog("缓存插入: "+truncStr(input, 60), "info")
+				m.addLog("缓存插入: "+utils.TruncateStr(input, 60), "info")
 				return m, nil
 			}
 			m.addMsg(MsgUser, input)
-			m.addLog("用户: "+truncStr(input, 60), "info")
+			m.addLog("用户: "+utils.TruncateStr(input, 60), "info")
 			m.textarea.Reset()
 			m.streamStatus = "思考中"
 			m.streamBuf.Reset()
@@ -423,7 +424,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			pending := m.pendingInput
 			m.pendingInput = ""
 			m.addMsg(MsgUser, pending)
-			m.addLog("发送缓存: "+truncStr(pending, 60), "info")
+			m.addLog("发送缓存: "+utils.TruncateStr(pending, 60), "info")
 			m.textarea.Reset()
 			m.streamStatus = "思考中"
 			m.streamBuf.Reset()

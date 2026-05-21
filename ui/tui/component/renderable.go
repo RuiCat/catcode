@@ -52,10 +52,3 @@ type InputDisplay interface {
 	HelpView() string
 }
 
-// QuestionDisplay 问题框接口
-type QuestionDisplay interface {
-	Renderable
-	Activate(questions []QuestionInfo)
-	IsActive() bool
-	SetReply(reply interface{})
-}

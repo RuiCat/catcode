@@ -1,6 +1,6 @@
 # catcode 架构设计文档
 
-> 版本: v0.9.3 | 2026-05-17
+> 版本: v0.9.2 | 2026-05-21
 
 ---
 
@@ -36,14 +36,14 @@
 │  ┌──────────────┐ ┌──────────┐ ┌──────────────────┐        │
 │  │ errors/      │ │ event/   │ │   config/        │        │
 │  │ CatError     │ │ EventBus │ │   DB+env+YAML    │        │
-│  │ ErrorCollector│ │26事件类型│ │   多层优先级      │        │
+│  │ ErrorCollector│ │33事件类型│ │   多层优先级      │        │
 │  │ SelfCorrect  │ │ Trigger  │ │                  │        │
 │  └──────────────┘ └──────────┘ └──────────────────┘        │
 ├──────────────────────────────────────────────────────────────┤
 │                    持久化层 (data/)                           │
 │  ┌──────────────────────────────────────────────────────┐   │
-│  │  storage/ — SQLite (WAL, 10表, schema v6)            │   │
-│  │  embed/   — go:embed (8角色YAML+默认配置)             │   │
+│  │  storage/ — SQLite (WAL, 9表, schema v6)             │   │
+│  │  embed/   — go:embed (9角色YAML+默认配置)             │   │
 │  └──────────────────────────────────────────────────────┘   │
 ├──────────────────────────────────────────────────────────────┤
 │  工具层(tool/) │ 插件(plugin/) │ MCP(mcp/) │ 调度(schedule/) │
@@ -63,9 +63,9 @@
 Architect/SubAgent → Session.BuildRequest → Provider.Chat → DeepSeek
        ↑                    ↑                    ↑              API
        │                    │                    │
-  对话编排              消息/工具/压缩       OpenAI兼容+SSE
-  ask_architect        BuildCleanRequest    ProviderRegistry
-  (双向通信)           (独立请求)           (多Provider)
+   对话编排              消息/工具/压缩       OpenAI兼容+SSE
+   ask_architect        BuildCleanRequest    ProviderRegistry
+   (双向通信)           (独立请求)           (多Provider)
 ```
 
 **设计原则**：
@@ -208,7 +208,7 @@ Pool.Execute(task)
 Hook 系统允许使用 Go 脚本动态扩展子智能体行为，无需重新编译主程序。Hook 文件存放在 `~/.catcode/hooks/<agent_type>.go`，由 yaegi 解释器加载执行，受沙箱安全策略限制。
 
 ```
-agent/subagent/hook/     # (规划中，目录已预留)
+agent/subagent/hook/     # (v0.9.2 完整实现)
 ├── bridge.go    # 类型桥接 — 将 Go 类型注册到 yaegi 解释器符号表
 ├── builder.go   # 适配器 — YaegiContextBuilder 将编译后的 Hook 适配为 ContextBuilder 接口
 ├── engine.go    # 引擎 — HookEngine 单例，管理编译缓存和热重载（mtime 检测）
@@ -429,7 +429,7 @@ ui/tui/
 │   ├── manager.go      #   UIManager — 中央控制器（布局/焦点/全局状态）
 │   └── mouse.go        #   鼠标事件路由（覆盖层→输入区→侧边栏→聊天区）
 └── plugin/             # 插件 API 层 ✅ (v0.9.2 已实现)
-    └── api.go          #   UIAPI 接口（7个方法）
+    └── api.go          #   UIAPI 接口（3个方法：Register/Unregister/GetPanels）
 ```
 
 ### Component 接口
@@ -490,18 +490,77 @@ type UIManager struct {
 
 鼠标事件转换为局部坐标后分发给对应组件，实现独立组件的鼠标交互。
 
-### UIAPI 插件接口
+### UIAPI 插件接口 (✅ v0.9.2 已实现)
 
 ```go
 type UIAPI interface {
-    RegisterSidebarTab(title string, render func(width int) string) error
-    UnregisterSidebarTab(title string) error
-    ShowQuestion(questions []tool.QuestionInfo) <-chan tool.QuestionAnswer
-    ShowConfirm(message string) <-chan bool
-    AppendToChat(content string)
-    ShowNotification(message string, level string, duration time.Duration)
-    SetStatus(key, value string)
+    RegisterSidebarTab(key string, title string) (updateCh chan<- string, err error)
+    UnregisterSidebarTab(key string) error
+    GetPanels() map[string]PanelInfo
 }
 ```
 
-插件可通过 `UIAPI` 添加自定义侧边栏 Tab、弹出提问对话框、向聊天区追加内容，无需直接操作 TUI 内部状态。
+插件通过 `PluginContext.UI` 访问 UIAPI，可注册自定义侧边栏面板（返回更新通道推送 Markdown 内容），TUI 通过 onTick 周期同步并自动渲染。
+
+侧边栏 Tab 系统已从 `SidebarTab` 枚举改为 `TabKey = string` 注册表模式，支持插件动态注册 Tab。
+
+---
+
+## 十二、关键设计模式
+
+| 模式 | 说明 |
+|------|------|
+| 接口解耦 | SubAgent/Provider/GuardReviewer/ArchitectInterface 均为接口，打破循环依赖 |
+| 事件驱动 | EventBus 33 事件类型，UI/插件通过事件与核心松耦合 |
+| 配置优先级 | `env > 数据库 settings > embed YAML` 三级覆盖 |
+| 零拷贝部署 | go:embed 嵌入 YAML + 插件符号表编译时注册 |
+| 延迟错误收集 | ErrorCollector 在 LLM 回复完成后统一注入，保证 tool_calls 配对合法 |
+| 空闲超时 | SSE 180s / 子智能体 10min / Guard 60s，收到数据时重置计时器 |
+| 多层安全 | 正则拦截(rm -rf/dd/mkfs) → Guard LLM审查(带缓存) → 三级权限(Allow/Ask/Deny) → yaegi沙箱 |
+| Hook 热重载 | yaegi 解释器 + mtime 检测，无需重启即可更新子智能体行为 |
+
+---
+
+## 十三、包依赖关系
+
+```
+cmd/catcode
+ ├── ui/tui ──────── agent/orchestrator, agent/plan, tool
+ ├── agent
+ │    ├── orchestrator ── pool, role, ai/llm, ai/session, ai/compact, core/*
+ │    ├── pool ────────── agent/subagent
+ │    ├── subagent ────── ai/session, ai/llm, core/*, tool, data/storage
+ │    └── role ────────── core/event
+ ├── ai
+ │    ├── session ── core/config, core/errors
+ │    ├── llm ────── core/event, core/errors
+ │    └── compact ── ai/session, core/errors
+ ├── core
+ │    ├── errors ── 叶子包
+ │    ├── event ─── 叶子包
+ │    ├── config ── core, data
+ │    └── buffer ── 叶子包
+ ├── data
+ │    ├── storage ── core/config, core/errors
+ │    └── embed ──── 叶子包
+ ├── tool/builtin ──── core, data/storage
+ ├── plugin/mcp/schedule
+```
+
+**依赖原则**：上层依赖下层，`core/errors`、`core/event`、`core/buffer`、`data/embed` 为叶子包。
+
+---
+
+## 十四、技术栈
+
+| 类别 | 技术 |
+|------|------|
+| 语言 | Go 1.26 |
+| TUI | Bubble Tea + Bubbles + Lipgloss |
+| 数据库 | SQLite WAL (modernc.org/sqlite 纯 Go) |
+| LLM 协议 | OpenAI 兼容 API + SSE 流式 |
+| 插件 | yaegi Go 解释器 (沙箱) |
+| 嵌入 | go:embed (9 角色 YAML + 默认配置) |
+| 并发 | channel + semaphore (池最大 3 并发) |
+| 渲染 | Glamour Markdown + Chroma 语法高亮 |
+| 安全 | 正则拦截 + Guard 审查 + 三级权限 + 沙箱 |

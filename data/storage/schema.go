@@ -214,7 +214,7 @@ CREATE INDEX IF NOT EXISTS idx_error_logs_created  ON error_logs(created_at DESC
 // Schema 版本管理
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-const currentSchemaVersion = 6
+const currentSchemaVersion = 7
 
 // initSchema 创建所有表
 func initSchema(db *sql.DB) error {
@@ -368,6 +368,22 @@ func migrateDB(db *sql.DB) error {
 			}
 			if err := SetSchemaVersion(db, 6, "v6: 新增 error_logs 表"); err != nil {
 				return cerr.Wrap(err, "storage: v5→v6 version record failed")
+			}
+		}
+
+		// v6 → v7: scheduled_tasks 表新增 run_once 列
+		if version < 7 {
+			exists, err := columnExists(db, "scheduled_tasks", "run_once")
+			if err != nil {
+				return cerr.Wrap(err, "storage: v6→v7 columnExists failed")
+			}
+			if !exists {
+				if _, err := db.Exec(`ALTER TABLE scheduled_tasks ADD COLUMN run_once INTEGER NOT NULL DEFAULT 0`); err != nil {
+					return cerr.Wrap(err, "storage: v6→v7 migration ALTER TABLE failed")
+				}
+			}
+			if err := SetSchemaVersion(db, 7, "v7: scheduled_tasks 表新增 run_once 列"); err != nil {
+				return cerr.Wrap(err, "storage: v6→v7 version record failed")
 			}
 		}
 	}

@@ -6,14 +6,15 @@ package agent
 import (
 	"context"
 	"fmt"
-	"runtime"
 	"sync"
 	"time"
 
 	"catcode/agent/subagent"
 	"catcode/ai/llm"
+	"catcode/core/config"
 	cerr "catcode/core/errors"
 	"catcode/core/event"
+	"catcode/core/utils"
 	"catcode/data/embed"
 	"catcode/data/storage"
 	"catcode/tool"
@@ -375,11 +376,11 @@ func DefaultAgentConfigs() map[string]subagent.Config {
 		modelName := prompt.ModelName
 		if modelName == "" {
 			if name == "explore" {
-				modelName = "deepseek:deepseek-v4-flash"
+				modelName = config.DefaultSmallModel // 参考 core/config/model_presets.go
 			} else if name == "guard" {
-				modelName = "deepseek:deepseek-chat"
+				modelName = config.DefaultChatModel // 参考 core/config/model_presets.go
 			} else {
-				modelName = "deepseek:deepseek-v4-pro"
+				modelName = config.DefaultProModel // 参考 core/config/model_presets.go
 			}
 		}
 
@@ -414,12 +415,6 @@ func logPoolError(wdb storage.WorkspaceDB, category, severity, message, source, 
 	if wdb == nil {
 		return
 	}
-	_ = wdb.LogError(category, severity, message, getPoolStack(), source, convID)
+	_ = wdb.LogError(category, severity, message, utils.GetStack(), source, convID) // 日志持久化失败不影响主流程
 }
 
-// getPoolStack 获取当前 goroutine 的堆栈跟踪
-func getPoolStack() string {
-	buf := make([]byte, 4096)
-	n := runtime.Stack(buf, false)
-	return string(buf[:n])
-}

@@ -1,5 +1,8 @@
 package manager
 
+// mouse.go — 全局鼠标事件路由（待与主 TUI 集成）
+// 当前此文件与 UIManager 一起预留，集成后替代 tui_update.go 中的手动鼠标分发。
+
 import (
 	"catcode/ui/tui/component"
 

@@ -1,3 +1,5 @@
+// Package component 提供 TUI 组件接口定义和基础实现，
+// 包括 Component、DialogComponent、Scrollable 等核心接口。
 package component
 
 import tea "github.com/charmbracelet/bubbletea"
@@ -83,14 +85,6 @@ type PluginPanelEntry struct {
 type SessionInfo struct {
 	ID, Title string
 	MsgCount  int
-}
-
-// Deprecated: QuestionInfo 使用简化字段（Header/Options []string），与主代码中
-// tool.QuestionInfo（Question/Options []QuestionOption/Multiple）不兼容。
-// 待统一到 tool.QuestionInfo 后移除此类型。
-type QuestionInfo struct {
-	Header  string
-	Options []string
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

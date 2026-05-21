@@ -19,6 +19,7 @@ main()
   ├── printBanner()                                 // 打印启动横幅
   ├── discoverWorkspace()                           // 发现工作区根目录
   ├── storage.OpenWorkspace(workDir)                // 打开/创建工作区数据库
+  ├── storage.InitMachineSecret(workDir)            // 初始化机器密钥
   ├── wdb.Seed()                                    // 写入种子数据/迁移配置
   ├── builtin.LoadGuardPatterns(wdb)                // 加载自定义守卫规则
   ├── storage.NewMemoryService(wdb)                 // 初始化记忆服务
@@ -67,7 +68,7 @@ main()
 ### `Version`
 
 ```
-const Version = "0.9.1"
+const Version = "0.9.2"
 ```
 
 当前 catcode 版本号，用于横幅显示和帮助信息输出。
@@ -247,7 +248,7 @@ func registerBuiltinTools(arch orchestrator.ArchitectInterface, app *Application
 
 **功能描述**:
 
-向主智能体注册所有内置工具及特殊工具。工具统一由 `builtin.BuiltinRegistry`（定义于 `tool/builtin/register.go`）管理，通过 `init()` 函数将 29 个工具注册到全局 `map[string]ToolFactoryFunc`。`registerBuiltinTools()` 遍历 `BuiltinRegistry`，跳过主智能体禁用的工具（如 `bash`），逐工厂调用 `ToolDeps` 注入依赖并创建工具实例，再通过 `arch.RegisterTool(t)` 注册到主智能体。`task`、`todo` 工具因需访问 `app` 字段而在 `registerBuiltinTools()` 中内联定义。注册分为三组：
+向主智能体注册所有内置工具及特殊工具。工具统一由 `builtin.BuiltinRegistry`（定义于 `tool/builtin/register.go`）管理，通过 `init()` 函数将 29 个工具注册到全局 `map[string]ToolFactoryFunc`。`registerBuiltinTools()` 遍历 `BuiltinRegistry`，跳过主智能体禁用的工具（如 `bash`），逐工厂调用 `ToolDeps` 注入依赖并创建工具实例，再通过 `arch.RegisterTool(t)` 注册到主智能体。`task`、`todo` 工具因需访问 `app` 字段而在 `main_register.go` 的 `registerBuiltinTools()` 中内联定义。注册分为三组：
 
 **第一组：基本内置工具**（来自 `builtin.BuiltinRegistry`，通过 `ToolDeps` 依赖注入创建）
 

@@ -193,7 +193,7 @@ func (s *Session) BuildCleanRequest(question string, maxTokens int) *llm.ChatReq
 	return req
 }
 
-// BuildRequestReader 使用零拷贝 Buffer 构建请求 body（性能优化版本）
+// BuildRequestReader 构建零拷贝请求读取器（预留功能，当前未使用）
 func (s *Session) BuildRequestReader() io.Reader {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

@@ -2,6 +2,7 @@ package builtin
 
 import (
 	cerr "catcode/core/errors"
+	"catcode/core/event"
 	"catcode/data/storage"
 	"catcode/tool"
 	"fmt"
@@ -13,7 +14,7 @@ import (
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 // ScheduleCreateTool 创建周期任务
-func ScheduleCreateTool(wdb storage.WorkspaceDB) *tool.Tool {
+func ScheduleCreateTool(wdb storage.WorkspaceDB, bus event.EventBus) *tool.Tool {
 	return &tool.Tool{
 		Function: tool.FuncDef{
 			Name:        "schedule_create",
@@ -24,6 +25,7 @@ func ScheduleCreateTool(wdb storage.WorkspaceDB) *tool.Tool {
 					"name":             {Type: "string", Description: "任务名称"},
 					"description":      {Type: "string", Description: "任务描述（也是执行内容）"},
 					"interval_seconds": {Type: "integer", Description: "执行间隔（秒），默认300"},
+					"run_once":         {Type: "boolean", Description: "是否仅执行一次，默认false"},
 				},
 				Required: []string{"name", "description"},
 			}),
@@ -35,9 +37,17 @@ func ScheduleCreateTool(wdb storage.WorkspaceDB) *tool.Tool {
 			if v, ok := args["interval_seconds"].(float64); ok {
 				interval = int(v)
 			}
-			task, err := wdb.CreateScheduledTask(name, desc, interval)
+			runOnce := false
+			if v, ok := args["run_once"].(bool); ok {
+				runOnce = v
+			}
+			task, err := wdb.CreateScheduledTask(name, desc, interval, runOnce)
 			if err != nil {
 				return "", cerr.Wrap(err, "创建任务失败")
+			}
+			if bus != nil {
+				bus.PublishAsync(event.EventTaskStarted, map[string]any{"action": "created", "id": task.ID})
+				bus.PublishAsync(event.EventScheduledTaskChanged, map[string]any{"action": "created", "id": task.ID})
 			}
 			return fmt.Sprintf("✓ 任务已创建 #%d: %s (间隔 %ds)", task.ID, name, interval), nil
 		},
@@ -75,7 +85,7 @@ func ScheduleListTool(wdb storage.WorkspaceDB) *tool.Tool {
 }
 
 // ScheduleDeleteTool 删除周期任务
-func ScheduleDeleteTool(wdb storage.WorkspaceDB) *tool.Tool {
+func ScheduleDeleteTool(wdb storage.WorkspaceDB, bus event.EventBus) *tool.Tool {
 	return &tool.Tool{
 		Function: tool.FuncDef{
 			Name:        "schedule_delete",
@@ -91,13 +101,17 @@ func ScheduleDeleteTool(wdb storage.WorkspaceDB) *tool.Tool {
 			if err := wdb.DeleteScheduledTask(int64(id)); err != nil {
 				return "", err
 			}
+			if bus != nil {
+				bus.PublishAsync(event.EventTaskCompleted, map[string]any{"action": "deleted", "id": int64(id)})
+				bus.PublishAsync(event.EventScheduledTaskChanged, map[string]any{"action": "deleted", "id": int64(id)})
+			}
 			return fmt.Sprintf("✓ 任务 #%d 已删除", int64(id)), nil
 		},
 	}
 }
 
 // ScheduleToggleTool 启用/禁用周期任务
-func ScheduleToggleTool(wdb storage.WorkspaceDB) *tool.Tool {
+func ScheduleToggleTool(wdb storage.WorkspaceDB, bus event.EventBus) *tool.Tool {
 	return &tool.Tool{
 		Function: tool.FuncDef{
 			Name:        "schedule_toggle",
@@ -119,6 +133,10 @@ func ScheduleToggleTool(wdb storage.WorkspaceDB) *tool.Tool {
 			for _, t := range tasks {
 				if t.ID == int64(id) {
 					wdb.UpdateScheduledTask(t.ID, t.Name, t.Description, t.IntervalSeconds, enable)
+					if bus != nil {
+						bus.PublishAsync(event.EventTaskCompleted, map[string]any{"action": "toggled", "id": t.ID})
+						bus.PublishAsync(event.EventScheduledTaskChanged, map[string]any{"action": "toggled", "id": t.ID})
+					}
 					status := "启用"
 					if !enable {
 						status = "禁用"

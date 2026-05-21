@@ -1,15 +1,18 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 
+	"catcode/agent/orchestrator"
 	"catcode/core/event"
+	"catcode/schedule"
 	"catcode/tool"
 	"catcode/ui/tui"
 )
 
 // registerEventCallbacks 注册所有事件回调
-func registerEventCallbacks(app *Application) {
+func registerEventCallbacks(app *Application, arch orchestrator.ArchitectInterface) {
 	app.Bus.Subscribe("role.list", "role.list", func(evt event.Event) {
 		listRolesHandler(app)
 	}, 10)
@@ -97,6 +100,26 @@ func registerEventCallbacks(app *Application) {
 			ReplyCh:   replyCh,
 		})
 	}, 100)
+
+	// 注册周期任务变更事件（侧边栏同步 + Scheduler 同步）
+	app.Bus.Subscribe("schedule.sync", event.EventTaskStarted, func(evt event.Event) {
+		reloadTasks(app)
+	}, 100)
+	app.Bus.Subscribe("schedule.sync", event.EventTaskCompleted, func(evt event.Event) {
+		reloadTasks(app)
+	}, 100)
+	app.Bus.Subscribe("schedule.sync", event.EventScheduledTaskChanged, func(evt event.Event) {
+		if app.Scheduler != nil && app.Wdb != nil {
+			app.Scheduler.Reload(func(s *schedule.Scheduler) error {
+				return schedule.LoadDBTasks(s, app.Wdb, func() bool {
+					return app.AgentPool != nil && app.AgentPool.ActiveCount() > 0
+				})
+			})
+		}
+	}, 10)
+
+	// 注册周期任务触发事件
+	app.Bus.Subscribe("scheduled", event.EventScheduledTaskTrigger, handleScheduledTaskTrigger(app, arch), 10)
 }
 
 // sendPlanUpdate 发送规划更新到 TUI
@@ -114,4 +137,61 @@ func sendPlanUpdate(app *Application) {
 		todos[i] = tui.TodoEntry{Content: t.Content, Status: string(t.Status)}
 	}
 	app.TUIProgram.Send(tui.UpdateTodosMsg{Todos: todos})
+}
+
+// reloadTasks 从 DB 重新加载周期任务到调度器和 TUI 侧边栏
+func reloadTasks(app *Application) {
+	if app.Wdb == nil || app.Scheduler == nil {
+		return
+	}
+	app.Scheduler.Reload(func(s *schedule.Scheduler) error {
+		return schedule.LoadDBTasks(s, app.Wdb, func() bool {
+			return app.AgentPool != nil && app.AgentPool.ActiveCount() > 0
+		})
+	})
+	tasks, err := app.Wdb.ListScheduledTasks()
+	if err != nil {
+		return
+	}
+	infos := make([]tui.ScheduledTaskInfo, 0, len(tasks))
+	for _, t := range tasks {
+		enabled := t.Enabled
+		infos = append(infos, tui.ScheduledTaskInfo{
+			ID: t.ID, Name: t.Name, Description: t.Description,
+			IntervalSeconds: t.IntervalSeconds, Enabled: enabled,
+			RunOnce: t.RunOnce,
+		})
+	}
+	if app.TUIProgram != nil {
+		go func() { app.TUIProgram.Send(tui.UpdateTasksMsg{Tasks: infos}) }()
+	}
+}
+
+// handleScheduledTaskTrigger 处理周期任务触发
+func handleScheduledTaskTrigger(app *Application, arch orchestrator.ArchitectInterface) func(e event.Event) {
+	return func(e event.Event) {
+		taskDesc, _ := e.Data["description"].(string)
+		taskName, _ := e.Data["name"].(string)
+		if taskDesc == "" || taskName == "" {
+			return
+		}
+		go func() {
+			app.ArchBusy.Store(true)
+			app.Scheduler.Detector().MarkAgentActive()
+			ch, err := arch.ProcessInput(context.Background(), taskDesc)
+			if err != nil {
+				app.ArchBusy.Store(false)
+				return
+			}
+			for msg := range ch {
+				if app.TUIProgram != nil {
+					app.TUIProgram.Send(tui.StreamMsg(msg))
+				}
+			}
+			if app.TUIProgram != nil {
+				app.TUIProgram.Send(tui.StreamDoneMsg{})
+			}
+			app.ArchBusy.Store(false)
+		}()
+	}
 }

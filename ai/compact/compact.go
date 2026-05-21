@@ -10,6 +10,7 @@ import (
 
 	"catcode/ai/llm"
 	"catcode/ai/session"
+	"catcode/core/utils"
 	"catcode/data/embed"
 	"catcode/data/storage"
 )
@@ -178,7 +179,7 @@ func BuildCompactionPrompt(messages []*session.Message, previousSummary string, 
 			continue
 		}
 		prefix := rolePrefix(m)
-		line := prefix + truncateStr(m.Content, 200)
+		line := prefix + utils.TruncateStr(m.Content, 200)
 		sb.WriteString(line)
 		sb.WriteString("\n")
 		chars += len(line)
@@ -291,7 +292,7 @@ func SessionMessagesToJSON(messages []*session.Message) string {
 	var list []msg
 	for _, m := range messages {
 		if m.Enable {
-			list = append(list, msg{Role: m.Role, Content: truncateStr(m.Content, 500)})
+			list = append(list, msg{Role: m.Role, Content: utils.TruncateStr(m.Content, 500)})
 		}
 	}
 	data, _ := json.Marshal(list)
@@ -421,13 +422,6 @@ func isCJK(r rune) bool {
 		(r >= 0x3000 && r <= 0x303F)
 }
 
-func truncateStr(s string, maxLen int) string {
-	runes := []rune(s)
-	if len(runes) <= maxLen {
-		return s
-	}
-	return string(runes[:maxLen]) + "..."
-}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 智能工具输出裁剪

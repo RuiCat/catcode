@@ -3,7 +3,6 @@ package subagent
 import (
 	"context"
 	"fmt"
-	"runtime"
 	"sync"
 	"time"
 
@@ -11,6 +10,7 @@ import (
 	"catcode/ai/session"
 	cerr "catcode/core/errors"
 	"catcode/core/event"
+	"catcode/core/utils"
 	"catcode/data/storage"
 	"catcode/tool"
 )
@@ -140,7 +140,7 @@ func (sa *BaseAgent) Snapshot() AgentSnapshot {
 		Name:        sa.agentType,
 		ID:          sa.id,
 		Status:      sa.status,
-		Task:        truncateTask(sa.task),
+		Task:        utils.TruncateStr(sa.task, 60),
 		FullTask:    sa.task,
 		CurrentTool: sa.currentTool,
 		ToolCount:   sa.toolCount,
@@ -189,15 +189,9 @@ func (sa *BaseAgent) logError(category, severity, message string) {
 	if sa.wdb == nil {
 		return
 	}
-	_ = sa.wdb.LogError(category, severity, message, getStack(), "subagent", sa.conversationID)
+	_ = sa.wdb.LogError(category, severity, message, utils.GetStack(), "subagent", sa.conversationID) // 日志持久化失败不影响主流程
 }
 
-// getStack 获取当前 goroutine 的堆栈跟踪
-func getStack() string {
-	buf := make([]byte, 4096)
-	n := runtime.Stack(buf, false)
-	return string(buf[:n])
-}
 
 // SetContextLimit 设置上下文窗口大小（用于压缩判断）
 func (sa *BaseAgent) SetContextLimit(limit int) {

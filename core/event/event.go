@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 
 	cerr "catcode/core/errors"
+	"catcode/core/utils"
 )
 
 // Event 事件结构
@@ -93,11 +94,11 @@ func (bus *eventBusImpl) Unsubscribe(sub *Subscriber) {
 // Publish 发布事件（同步调用所有匹配的订阅者）
 // 每个订阅者的 Handler 在独立 goroutine 中串行化执行（通过 subscriber.mu 保证）
 func (bus *eventBusImpl) Publish(name string, data map[string]any) {
-	if bus.publishDepth.Load() > 10 {
+	depth := bus.publishDepth.Add(1)
+	defer bus.publishDepth.Add(-1)
+	if depth > 10 {
 		return
 	}
-	bus.publishDepth.Add(1)
-	defer func() { bus.publishDepth.Add(-1) }()
 
 	evt := Event{Name: name, Data: data}
 
@@ -134,7 +135,9 @@ func (bus *eventBusImpl) Publish(name string, data map[string]any) {
 
 // PublishAsync 异步发布事件（不阻塞调用者）
 func (bus *eventBusImpl) PublishAsync(name string, data map[string]any) {
-	go bus.Publish(name, data)
+	utils.SafeGo("event-publish-"+name, func() {
+		bus.Publish(name, data)
+	})
 }
 
 // History 返回事件历史（最近 N 个）
@@ -195,7 +198,7 @@ type Trigger struct {
 	mu        sync.Mutex
 }
 
-// TriggerManager 触发器管理器
+// TriggerManager 条件触发器管理器（预留功能，当前未集成到启动流程）
 // 监听 EventBus 上的事件，匹配触发器并执行动作
 type TriggerManager struct {
 	bus      EventBus
@@ -306,6 +309,12 @@ const (
 	EventTaskStarted   = "task.started"
 	EventTaskCompleted = "task.completed"
 	EventTaskFailed    = "task.failed"
+)
+
+// 周期任务触发事件
+const (
+	EventScheduledTaskTrigger = "scheduled.task.trigger"
+	EventScheduledTaskChanged = "scheduled.task.changed"
 )
 
 // 子智能体工具事件

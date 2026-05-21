@@ -33,23 +33,19 @@ func EditTool() *tool.Tool {
 }
 
 func editCall(ctx *tool.Context, args map[string]any) (string, error) {
-	path, _ := args["path"].(string)
+	path, ok := args["path"].(string)
+	if !ok || path == "" {
+		return "", cerr.Newf("edit: path 参数必填")
+	}
 	oldStr, _ := args["old_string"].(string)
 	newStr, _ := args["new_string"].(string)
 
-	// 相对路径基于工作目录解析
-	if !filepath.IsAbs(path) && ctx.WorkDir != "" {
+	if !filepath.IsAbs(path) {
 		path = filepath.Join(ctx.WorkDir, path)
 	}
-
-	// 安全检查：解析符号链接并验证路径在工作区内
-	cleanPath := filepath.Clean(path)
-	resolvedPath, err := filepath.EvalSymlinks(cleanPath)
+	resolvedPath, err := ResolveAndCheckPath(path, ctx.WorkDir)
 	if err != nil {
-		return "", cerr.Wrap(err, "edit: 无法解析路径")
-	}
-	if !strings.HasPrefix(resolvedPath, ctx.WorkDir) {
-		return "", cerr.Newf("edit: 路径超出工作区范围")
+		return "", err
 	}
 
 	data, err := os.ReadFile(resolvedPath)
@@ -115,6 +111,14 @@ func editCall(ctx *tool.Context, args map[string]any) (string, error) {
 	}
 
 	newContent := content[:idx] + newStr + content[idx+len(oldStr):]
+	// 写入前重新读取验证内容未被外部修改 (TOCTOU 防护)
+	currentData, err := os.ReadFile(resolvedPath)
+	if err != nil {
+		return "", cerr.Wrap(err, "edit: 写入前重新读取文件失败")
+	}
+	if string(currentData) != content {
+		return "", cerr.Newf("edit: 文件在编辑过程中被外部修改，请重试")
+	}
 	if err := os.WriteFile(resolvedPath, []byte(newContent), 0644); err != nil {
 		return "", cerr.Wrap(err, "edit: 写入失败")
 	}

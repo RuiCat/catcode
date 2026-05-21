@@ -47,6 +47,23 @@ func init() {
 		{regexp.MustCompile(`>\s*/dev/(?:sd|hd|nvme|mmcblk)`), "直接写入磁盘设备", "builtin"},
 		{regexp.MustCompile(`\bchmod\s+.*777\s+(?:/|/etc|/bin|/usr|/boot)`), "修改关键目录权限为777", "builtin"},
 		{regexp.MustCompile(`\b(?:mkfs|mkswap|wipefs)\s+/dev/`), "磁盘格式化/擦除操作", "builtin"},
+		// 系统关机/重启
+		{regexp.MustCompile(`\b(shutdown|reboot|halt|poweroff|init\s+[06])\b`), "系统关机/重启操作", "builtin"},
+		// 管道执行远程脚本
+		{regexp.MustCompile(`(?:curl|wget)\s+.*\|\s*(?:ba)?sh\b`), "管道执行远程脚本", "builtin"},
+		// 直接写入磁盘设备
+		{regexp.MustCompile(`>\s*/dev/sd[a-z]`), "直接覆盖磁盘设备", "builtin"},
+		// 递归修改根目录所有者/权限
+		{regexp.MustCompile(`\bchown\s+.*-R\s+.*\s+/(?:\s|$)`), "递归修改根目录所有者", "builtin"},
+		{regexp.MustCompile(`\bchmod\s+.*-R\s+.*\s+/(?:\s|$)`), "递归修改根目录权限", "builtin"},
+		// 修改 crontab
+		{regexp.MustCompile(`\bcrontab\s+-`), "修改 crontab 定时任务", "builtin"},
+		// 修改防火墙规则
+		{regexp.MustCompile(`\biptables\s+-`), "修改防火墙规则", "builtin"},
+		// netcat 监听模式
+		{regexp.MustCompile(`\b(?:nc|ncat)\s+-[lL]`), "netcat 监听模式", "builtin"},
+		// fork 炸弹
+		{regexp.MustCompile(`:\(\)\s*\{\s*:\|:&\s*\};:`), "fork 炸弹", "builtin"},
 	}
 }
 
