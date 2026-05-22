@@ -97,6 +97,22 @@ func (b *Buffer) Get() io.Reader {
 	})
 }
 
+// Bytes 将所有片段合并为单个连续字节切片
+// 调用方获取所有权，后续 buffer 变更不影响该切片
+func (b *Buffer) Bytes() []byte {
+	buf := *b
+	totalLen := 0
+	for _, ptr := range buf {
+		totalLen += len(*ptr)
+	}
+	merged := make([]byte, totalLen)
+	pos := 0
+	for _, ptr := range buf {
+		pos += copy(merged[pos:], *ptr)
+	}
+	return merged
+}
+
 // GetReader 返回一个并发安全的 io.ReadSeeker（通过预先合并所有片段）
 // 适用于需要多次读取或并发读取的场景
 // 注意：会分配新内存，失去零拷贝优势

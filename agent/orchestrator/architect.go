@@ -27,8 +27,15 @@ import (
 // Architect — 主智慧体
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-// maxToolCallRounds 单次请求最大 tool call 轮数，防止无限递归
+// maxToolCallRounds 主智能体最大 tool-loop 轮次。
+// 子智能体使用更小的值 10（定义于 base.go），防止子任务过度递归。
 const maxToolCallRounds = 20
+
+// MemoryIndex 更新控制（配合方案1优化：只在边界条件更新，而非每轮）
+const (
+	memoryIndexRefreshRounds   = 8               // 每 8 轮 tool-loop 刷新一次
+	memoryIndexRefreshInterval = 5 * time.Minute // 或每 5 分钟刷新
+)
 
 // Architect 主智慧体，负责：
 // 1. 理解用户需求
@@ -81,6 +88,10 @@ type Architect struct {
 
 	// 原始 SystemPrompt（不含记忆索引）
 	originalSystemPrompt string
+
+	// MemoryIndex 更新控制（配合方案1优化：只在边界条件更新，而非每轮）
+	memoryIndexRounds    int       // 自上次更新后的 tool-loop 轮次
+	memoryIndexUpdatedAt time.Time // 上次更新时间
 }
 
 // Config Architect 配置
@@ -161,8 +172,8 @@ func NewArchitect(cfg *Config, provider llm.Provider, roleReg role.RegistryInter
 		arch.mainSession.CompressThreshold = cfg.ContextLimit * 50 / 100
 	}
 
-	arch.mainSession.Temperature = cfg.Temperature
-	arch.mainSession.MaxTokens = cfg.MaxOutput
+	arch.mainSession.SetTemperature(cfg.Temperature)
+	arch.mainSession.SetMaxTokens(cfg.MaxOutput)
 	arch.mainSession.MaxToolResultLen = arch.maxToolResultLen
 
 	// 订阅编排事件
@@ -182,7 +193,7 @@ func (a *Architect) SetWorkDir(dir string) {
 	a.workDir = dir
 	a.instructions = storage.LoadInstructions(dir)
 	if a.instructions != nil && !a.instructions.IsEmpty() && a.mainSession != nil {
-		a.mainSession.InstructionsContent = a.instructions.FormatContext(8000)
+		a.mainSession.SetInstructionsContent(a.instructions.FormatContext(8000))
 	}
 }
 
@@ -207,6 +218,8 @@ func (a *Architect) ProcessInput(ctx context.Context, userInput string) (<-chan 
 
 	// 注入记忆索引到 SystemPrompt
 	a.injectMemoryIndex()
+	a.memoryIndexRounds = 0
+	a.memoryIndexUpdatedAt = time.Now()
 
 	// 构建请求
 	req, err := a.mainSession.BuildRequest()
@@ -366,6 +379,6 @@ func (a *Architect) RegisterTool(t *tool.Tool) error {
 
 // SetSystemPrompt 更新系统提示词（同时更新原始缓存）
 func (a *Architect) SetSystemPrompt(prompt string) {
-	a.mainSession.SystemPrompt = prompt
+	a.mainSession.SetSystemPrompt(prompt)
 	a.originalSystemPrompt = prompt
 }

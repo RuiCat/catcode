@@ -81,7 +81,7 @@ func New(cfg Config, providers *llm.ProviderRegistry, bus event.EventBus, toolFa
 		maxTokens:         cfg.MaxTokens,
 		status:            "idle",
 		config:            cfg,
-		maxToolCallRounds: 10,
+		maxToolCallRounds: 10, // 子智能体轮次上限（低于主智能体的 20）
 		toolErrors:        cerr.NewCollector(3),
 		conversationID:    id,
 		contextLimit:      65536,
@@ -254,7 +254,7 @@ func (sa *BaseAgent) Execute(ctx context.Context, task, contextSummary string) (
 	if sa.memoryService != nil {
 		index := sa.memoryService.BuildIndex(task)
 		if index != "" {
-			sa.session.MemoryIndex = index
+			sa.session.SetMemoryIndex(index)
 		}
 	}
 	// 尝试使用 Hook 构建上下文
@@ -291,8 +291,8 @@ func (sa *BaseAgent) Execute(ctx context.Context, task, contextSummary string) (
 		})
 	}
 
-	sa.session.Temperature = sa.temperature
-	sa.session.MaxTokens = sa.maxTokens
+	sa.session.SetTemperature(sa.temperature)
+	sa.session.SetMaxTokens(sa.maxTokens)
 
 	req, err := sa.session.BuildRequest()
 	if err != nil {

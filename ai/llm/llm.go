@@ -33,6 +33,10 @@ type ChatRequest struct {
 	Stream      bool      `json:"stream"`
 	// Thinking 模式
 	Thinking *ThinkingConfig `json:"thinking,omitempty"`
+
+	// PrebuiltMessagesJSON 预构建的消息 JSON 字节（完整的 JSON 数组，如 `[{...},{...}]`）
+	// 如果设置，buildRequestBody 优先使用此字段，跳过 json.Marshal(Messages)
+	PrebuiltMessagesJSON []byte `json:"-"`
 }
 
 // ThinkingConfig thinking 模式配置
@@ -294,12 +298,15 @@ func (c *OpenAIClient) buildRequestBody(req *ChatRequest) (io.Reader, error) {
 	buf.AddBytes([]byte(`{"model":"`))
 	buf.AddString(modelName)
 	buf.AddBytes([]byte(`","messages":`))
-
-	msgBytes, err := json.Marshal(req.Messages)
-	if err != nil {
-		return nil, err
+	if req.PrebuiltMessagesJSON != nil {
+		buf.AddBytes(req.PrebuiltMessagesJSON)
+	} else {
+		msgBytes, err := json.Marshal(req.Messages)
+		if err != nil {
+			return nil, err
+		}
+		buf.AddBytes(msgBytes)
 	}
-	buf.AddBytes(msgBytes)
 
 	if len(req.Tools) > 0 {
 		buf.AddBytes([]byte(`,"tools":`))

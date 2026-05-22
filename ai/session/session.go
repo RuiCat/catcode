@@ -5,6 +5,8 @@ package session
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -125,6 +127,14 @@ type Session struct {
 	MaxToolResultLen    int                   // 工具结果传给 LLM 时的截断长度（DB 层仍存完整数据）
 	FileBlocks          map[string]*FileBlock // 文件路径 → 文件块（替换式读取）
 
+	// 运行 token 计数（增量维护，避免 TokenCount() 每次 O(n) 遍历）
+	runningTokenCount int
+
+	// 增量构建缓存（方案3）：缓存 system 消息 JSON，tool-loop 内复用
+	cacheMu          sync.Mutex
+	cachedSystemJSON []byte // system 消息部分 JSON（不含外层括号，如 {sys1},{sys2}）
+	systemStateKey   string // 拼接 SystemPrompt+MemoryIndex+Instructions+Summary 用于快速比较
+
 	// 预编码 buffer（零拷贝关键）
 	msgBuf  buffer.Buffer // 消息拼接 buffer
 	toolBuf buffer.Buffer // 工具拼接 buffer
@@ -147,6 +157,7 @@ func New(id, model, systemPrompt string) *Session {
 		CompressThreshold: 900000, // 1M 上下文下 90万触发压缩
 		MaxToolResultLen:  4000,   // 工具结果传给 LLM 的默认截断长度
 		FileBlocks:        make(map[string]*FileBlock),
+		runningTokenCount: llm.EstimateTokens(systemPrompt),
 		msgBuf:            buffer.New(),
 		toolBuf:           buffer.New(),
 	}
@@ -213,7 +224,9 @@ type FileBlock struct {
 // FromConversationRow 从 DB ConversationRow + MessageRows 重建 Session
 func FromConversationRow(conv *storage.ConversationRow, msgs []*storage.MessageRow) *Session {
 	var metadata map[string]string
-	json.Unmarshal([]byte(conv.MetadataJSON), &metadata)
+	if err := json.Unmarshal([]byte(conv.MetadataJSON), &metadata); err != nil {
+		fmt.Fprintf(os.Stderr, "session: metadata JSON 解析失败: %v\n", err)
+	}
 	if metadata == nil {
 		metadata = make(map[string]string)
 	}
@@ -224,10 +237,13 @@ func FromConversationRow(conv *storage.ConversationRow, msgs []*storage.MessageR
 	sess.Metadata = metadata
 	sess.CreatedAt = conv.CreatedAt
 	sess.UpdatedAt = conv.UpdatedAt
+	// runningTokenCount 在 New() 中已用 SystemPrompt 初始化，此处追加消息 token
 
 	for _, m := range msgs {
 		var toolCalls []llm.ToolCall
-		json.Unmarshal([]byte(m.ToolCallsJSON), &toolCalls)
+		if err := json.Unmarshal([]byte(m.ToolCallsJSON), &toolCalls); err != nil {
+			fmt.Fprintf(os.Stderr, "session: tool_calls JSON 解析失败: %v\n", err)
+		}
 
 		msg := &Message{
 			Role:             m.Role,
@@ -240,6 +256,9 @@ func FromConversationRow(conv *storage.ConversationRow, msgs []*storage.MessageR
 		}
 		msg.Update()
 		sess.Messages = append(sess.Messages, msg)
+		if m.Enabled {
+			sess.runningTokenCount += llm.EstimateTokens(m.Content)
+		}
 	}
 	sess.CleanOrphanedToolCalls()
 

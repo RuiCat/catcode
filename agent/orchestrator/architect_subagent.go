@@ -67,6 +67,7 @@ loop:
 				break loop
 			}
 			// 收到输出，重置空闲计时器
+			// 标准 Go timer Reset 模式：Stop 并排空 channel 后再 Reset
 			if !idleTimer.Stop() {
 				select {
 				case <-idleTimer.C:
@@ -93,6 +94,7 @@ loop:
 // buildSubAgentContext 为子智能体构建完整的上下文摘要
 func (a *Architect) buildSubAgentContext(taskDesc, subagentType string) string {
 	var sb strings.Builder
+	sb.Grow(6000) // 预分配，减少扩容
 
 	// 1. 主会话最近上下文
 	mainCtx := a.extractMainContext(2000)
@@ -145,9 +147,10 @@ func (a *Architect) extractMainContext(maxChars int) string {
 		return ""
 	}
 
+	// 从后向前收集（反向），再反转恢复顺序
 	var parts []string
 	remaining := maxChars
-	// 从后往前取最近的用户和助手消息
+
 	for i := len(msgs) - 1; i >= 0 && remaining > 0; i-- {
 		msg := msgs[i]
 		if !msg.Enable {
@@ -167,12 +170,18 @@ func (a *Architect) extractMainContext(maxChars int) string {
 		if msg.Role == "assistant" {
 			prefix = "助手: "
 		}
-		parts = append([]string{prefix + text}, parts...)
+		parts = append(parts, prefix+text) // O(1) 尾部追加
 		remaining -= len(text)
+	}
+
+	// 反转恢复正确顺序
+	for i, j := 0, len(parts)-1; i < j; i, j = i+1, j-1 {
+		parts[i], parts[j] = parts[j], parts[i]
 	}
 
 	return strings.Join(parts, "\n\n")
 }
+
 
 // buildEnvironmentContext 构建项目环境上下文
 func (a *Architect) buildEnvironmentContext(subagentType string) string {

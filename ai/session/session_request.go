@@ -1,7 +1,9 @@
 package session
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 
 	"catcode/ai/llm"
@@ -48,70 +50,119 @@ func (s *Session) GetTool(name string) (*tool.Tool, bool) {
 // 请求构建（零拷贝 buffer 拼接）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+const summaryPrefix = "[上下文索引]\n"
+
+// encodeSystemMessages 将 system 消息序列化为逗号分隔的 JSON 片段（不含外层括号）
+// 纯计算函数，不修改 Session 状态，可在 RLock 下安全调用
+func (s *Session) encodeSystemMessages() []byte {
+	var buf bytes.Buffer
+	first := true
+
+	write := func(data []byte) {
+		if !first {
+			buf.WriteByte(',')
+		}
+		buf.Write(data)
+		first = false
+	}
+
+	if s.SystemPrompt != "" {
+		data, _ := json.Marshal(llm.Message{Role: "system", Content: s.SystemPrompt})
+		write(data)
+	}
+	if s.MemoryIndex != "" {
+		data, _ := json.Marshal(llm.Message{Role: "system", Content: s.MemoryIndex})
+		write(data)
+	}
+	if s.InstructionsContent != "" {
+		data, _ := json.Marshal(llm.Message{Role: "system", Content: s.InstructionsContent})
+		write(data)
+	}
+	if s.Summary != "" {
+		data, _ := json.Marshal(llm.Message{Role: "system", Content: summaryPrefix + s.Summary})
+		write(data)
+	}
+
+	return buf.Bytes()
+}
+
+// buildSystemMessagesJSON 构建 system 消息 JSON（带缓存）
+// 在 RLock 下调用安全：读取缓存时获取 cacheMu 锁
+func (s *Session) buildSystemMessagesJSON() []byte {
+	currentKey := fmt.Sprintf("SP=%d|MI=%d|IC=%d|SM=%d", len(s.SystemPrompt), len(s.MemoryIndex), len(s.InstructionsContent), len(s.Summary))
+
+	s.cacheMu.Lock()
+	if s.cachedSystemJSON != nil && s.systemStateKey == currentKey {
+		result := s.cachedSystemJSON
+		s.cacheMu.Unlock()
+		return result // 缓存命中
+	}
+	s.cacheMu.Unlock()
+
+	// 缓存未命中，构建并更新
+	json := s.encodeSystemMessages()
+
+	s.cacheMu.Lock()
+	s.cachedSystemJSON = json
+	s.systemStateKey = currentKey
+	s.cacheMu.Unlock()
+
+	return json
+}
+
 // BuildRequest 构建完整的 ChatRequest
-// 使用预编码缓存优化消息构建
+// 使用 buffer 零拷贝拼接消息 JSON + system 消息缓存，避免双重序列化
 func (s *Session) BuildRequest() (*llm.ChatRequest, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// 构建消息列表 — 分层上下文结构
-	// 系统提示词 → 记忆索引 → 上下文索引 → 对话上下文
-	messages := make([]llm.Message, 0, len(s.Messages)+3)
+	// 获取 system 消息 JSON（带缓存）
+	sysJSON := s.buildSystemMessagesJSON()
 
-	// 第1层：系统提示词
-	if s.SystemPrompt != "" {
-		messages = append(messages, llm.Message{
-			Role:    "system",
-			Content: s.SystemPrompt,
-		})
+	// 构建完整消息数组
+	s.msgBuf.Reset()
+	s.msgBuf.AddBytes([]byte(`[`))
+
+	hasPrev := len(sysJSON) > 0
+	if hasPrev {
+		s.msgBuf.AddBytes(sysJSON)
 	}
 
-	// 第2层：记忆索引（全局记忆 + 智慧体记忆）
-	if s.MemoryIndex != "" {
-		messages = append(messages, llm.Message{
-			Role:    "system",
-			Content: s.MemoryIndex,
-		})
-	}
-
-	// 第2.5层：指令文件内容
-	if s.InstructionsContent != "" {
-		messages = append(messages, llm.Message{
-			Role:    "system",
-			Content: s.InstructionsContent,
-		})
-	}
-
-	// 第3层：上下文索引（压缩摘要）
-	if s.Summary != "" {
-		messages = append(messages, llm.Message{
-			Role:    "system",
-			Content: "[上下文索引]\n" + s.Summary,
-		})
-	}
-
-	// 第4层：对话上下文（最近消息 + 工具调用历史）
+	// 对话上下文 — 零拷贝引用 Message.cachedJSON
 	for _, msg := range s.Messages {
 		if !msg.Enable {
 			continue
 		}
-		content := msg.Content
-		// 对 tool 消息在 LLM 上下文层截断，DB 层保留完整数据
-		if msg.Role == "tool" && s.MaxToolResultLen > 0 && len(content) > s.MaxToolResultLen {
-			content = content[:s.MaxToolResultLen] + "\n... (截断)"
+		// tool 消息截断时需重新编码
+		if msg.Role == "tool" && s.MaxToolResultLen > 0 && len(msg.Content) > s.MaxToolResultLen {
+			if hasPrev {
+				s.msgBuf.AddBytes([]byte(`,`))
+			}
+			truncated := llm.Message{
+				Role:       msg.Role,
+				Content:    msg.Content[:s.MaxToolResultLen] + "\n... (截断)",
+				Name:       msg.Name,
+				ToolCallID: msg.ToolCallID,
+			}
+			data, _ := json.Marshal(truncated)
+			s.msgBuf.AddBytes(data)
+			hasPrev = true
+		} else {
+			if msg.cachedJSON == nil {
+				msg.Update()
+			}
+			if hasPrev {
+				s.msgBuf.AddBytes([]byte(`,`))
+			}
+			s.msgBuf.AddPtr(&msg.cachedJSON)
+			hasPrev = true
 		}
-		m := llm.Message{
-			Role:             msg.Role,
-			Content:          content,
-			ReasoningContent: msg.ReasoningContent,
-			Name:             msg.Name,
-			ToolCallID:       msg.ToolCallID,
-			ToolCalls:        msg.ToolCalls,
-		}
-		messages = append(messages, m)
 	}
 
-	// 4. 构建工具列表
+	s.msgBuf.AddBytes([]byte(`]`))
+	messagesJSON := s.msgBuf.Bytes()
+
+	// 构建工具列表
 	toolDefs := make([]llm.ToolDef, 0, len(s.Tools))
 	for _, t := range s.Tools {
 		if !t.Enable {
@@ -128,10 +179,11 @@ func (s *Session) BuildRequest() (*llm.ChatRequest, error) {
 	}
 
 	req := &llm.ChatRequest{
-		Model:    s.Model,
-		Messages: messages,
-		Tools:    toolDefs,
-		Stream:   true,
+		Model:                s.Model,
+		Messages:             nil,
+		PrebuiltMessagesJSON: messagesJSON,
+		Tools:                toolDefs,
+		Stream:               true,
 	}
 	if s.Temperature > 0 {
 		req.Temperature = s.Temperature
@@ -234,7 +286,7 @@ func (s *Session) BuildRequestReader() io.Reader {
 	// 上下文索引（压缩摘要）
 	if s.Summary != "" {
 		s.msgBuf.AddBytes([]byte(`{"role":"system","content":`))
-		sumData, _ := json.Marshal("[上下文索引]\n" + s.Summary)
+		sumData, _ := json.Marshal(summaryPrefix + s.Summary)
 		s.msgBuf.AddBytes(sumData)
 		s.msgBuf.AddBytes([]byte(`},`))
 	}
@@ -295,16 +347,24 @@ func (s *Session) BuildRequestReader() io.Reader {
 // 统计信息
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-// TokenCount 估算当前会话的 token 数量
+// RecalculateTokenCount 重新计算 token 计数（用于一致性校验）
+func (s *Session) RecalculateTokenCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	total := llm.EstimateTokens(s.SystemPrompt)
+	for _, msg := range s.Messages {
+		if msg.Enable {
+			total += llm.EstimateTokens(msg.Content)
+		}
+	}
+	return total
+}
+
+// TokenCount 估算当前会话的 token 数量（O(1) 增量维护）
 func (s *Session) TokenCount() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	total := llm.EstimateTokens(s.SystemPrompt)
-	for _, msg := range s.Messages {
-		total += llm.EstimateTokens(msg.Content)
-	}
-	return total
+	return s.runningTokenCount
 }
 
 // MessageCount 返回消息数量

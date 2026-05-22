@@ -53,6 +53,7 @@ type CompactDecision struct {
 	Reason   string
 	TokenCnt int
 }
+const summaryPrefix = "[上下文索引]\n"
 
 // CompactResult 压缩结果（借鉴 buildPostCompactMessages）
 type CompactResult struct {
@@ -244,23 +245,33 @@ func BuildCompactResult(messages []*session.Message, previousSummary string,
 
 // ApplyCompactResult 将压缩结果应用到会话（禁用旧消息、注入边界和摘要）
 func ApplyCompactResult(sess *session.Session, result *CompactResult) {
-	// 1. 禁用 head 范围内的消息
-	for i := 0; i < result.TailStartIndex && i < len(sess.Messages); i++ {
-		sess.Messages[i].Enable = false
+	// 1. 禁用 head 范围内的消息（批量操作，减少锁竞争）
+	end := result.TailStartIndex
+	if end > len(sess.Messages) {
+		end = len(sess.Messages)
 	}
+	var disableIndices []int
+	for i := 0; i < end; i++ {
+		if sess.Messages[i].Enable {
+			disableIndices = append(disableIndices, i)
+		}
+	}
+	sess.DisableMessages(disableIndices)
 
 	// 2. 注入边界标记
-	sess.Messages = append(sess.Messages, result.BoundaryMsg)
 	result.BoundaryMsg.Update()
+	if err := sess.AppendMessage(result.BoundaryMsg); err != nil {
+	}
 
 	// 3. 注入摘要（以 system 消息形式）
 	summaryMsg := &session.Message{
 		Role:    "system",
-		Content: "[上下文索引]\n" + result.SummaryContent,
+		Content: summaryPrefix + result.SummaryContent,
 		Enable:  true,
 	}
 	summaryMsg.Update()
-	sess.Messages = append(sess.Messages, summaryMsg)
+	if err := sess.AppendMessage(summaryMsg); err != nil {
+	}
 
 	// 4. 更新 Session.Summary 持久化字段
 	sess.SetSummary(result.SummaryContent)
@@ -273,14 +284,16 @@ func ApplyCompactResult(sess *session.Session, result *CompactResult) {
 // TrimOldToolOutputs 微压缩：清理旧的工具输出（保留最近 N 条）
 func TrimOldToolOutputs(sess *session.Session) {
 	count := 0
+	var disableIndices []int
 	for i := len(sess.Messages) - 1; i >= 0; i-- {
 		if sess.Messages[i].Role == "tool" {
 			count++
 			if count > MicroKeepTools {
-				sess.Messages[i].Enable = false
+				disableIndices = append(disableIndices, i)
 			}
 		}
 	}
+	sess.DisableMessages(disableIndices)
 }
 
 // SessionMessagesToJSON 序列化会话消息为 JSON（供快照使用）
@@ -436,7 +449,6 @@ const (
 
 // PruneToolOutputs 智能裁剪工具输出
 // 保留最近的工具输出 + 包含关键信息的输出（错误/警告等）
-// 注意：调用方必须持有 Session 的写锁（mu.Lock）
 func PruneToolOutputs(sess *session.Session) {
 	if sess == nil {
 		return
@@ -472,9 +484,9 @@ func PruneToolOutputs(sess *session.Session) {
 
 		// 裁剪：用摘要替换长输出，或直接禁用
 		if len(content) > PruneLongOutputThreshold {
-			msg.Content = summarizeToolOutput(content)
+			sess.SetMessageContent(i, summarizeToolOutput(content))
 		} else {
-			msg.Enable = false
+			sess.DisableMessage(i)
 		}
 	}
 }

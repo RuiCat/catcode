@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"catcode/ai/compact"
 	"catcode/ai/llm"
@@ -138,6 +139,8 @@ func (a *Architect) executeToolCalls(ctx context.Context, toolCalls []*llm.ToolC
 func (a *Architect) prepareNextRound(ctx context.Context, responseCh chan<- string) {
 	// 上下文压缩
 	decision := compact.ShouldCompact(a.mainSession, a.config.ContextLimit)
+
+	compressed := false
 	if decision.Needed {
 		responseCh <- fmt.Sprintf("\n📦 自动压缩中... (tokens=%d, level=%s)", decision.TokenCnt, decision.Level)
 
@@ -158,13 +161,30 @@ func (a *Architect) prepareNextRound(ctx context.Context, responseCh chan<- stri
 			compact.TrimOldToolOutputs(a.mainSession)
 		}
 		responseCh <- " ✓ 压缩完成"
+
+		compressed = true
+
+		// 压缩发生 → 上下文结构变化 → 强制刷新 MemoryIndex
+		a.injectMemoryIndex()
+		a.memoryIndexRounds = 0
+		a.memoryIndexUpdatedAt = time.Now()
 	}
 
 	// 清理孤儿 tool_calls
 	a.mainSession.CleanOrphanedToolCalls()
 
-	// 注入记忆索引
-	a.injectMemoryIndex()
+	// 边界条件触发 MemoryIndex 刷新（仅在压缩未触发时检查）
+	if !compressed {
+		a.memoryIndexRounds++
+		shouldRefresh := a.memoryIndexRounds >= memoryIndexRefreshRounds ||
+			time.Since(a.memoryIndexUpdatedAt) > memoryIndexRefreshInterval
+
+		if shouldRefresh {
+			a.injectMemoryIndex()
+			a.memoryIndexRounds = 0
+			a.memoryIndexUpdatedAt = time.Now()
+		}
+	}
 }
 
 // checkPermission 检查主智能体对工具的权限（从角色定义中获取）

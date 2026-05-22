@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"catcode/ai/llm"
 	"catcode/data/storage"
 )
 
@@ -24,6 +25,10 @@ func (s *Session) SetSummary(summary string) {
 	defer s.mu.Unlock()
 	s.Summary = summary
 	s.UpdatedAt = time.Now()
+	s.cacheMu.Lock()
+	s.cachedSystemJSON = nil
+	s.systemStateKey = ""
+	s.cacheMu.Unlock()
 }
 
 // SetLastReasoning 设置最后一条消息的 reasoning_content（线程安全）
@@ -71,10 +76,7 @@ func (s *Session) ToMessageRows() []*storage.MessageRow {
 			continue
 		}
 		tcJSON, _ := json.Marshal(msg.ToolCalls)
-		enabledInt := 0
-		if msg.Enable {
-			enabledInt = 1
-		}
+		enabledInt := 1
 		rows = append(rows, &storage.MessageRow{
 			ConversationID:   s.ID,
 			Seq:              i,
@@ -107,8 +109,10 @@ func (s *Session) UpsertFileBlock(toolCallID, path, content string, offset, endL
 		} else {
 			newContent = fmt.Sprintf("[当前块 行%d-%d/%d]\n%s", offset, endLine, totalLines, content)
 		}
+		oldTokens := llm.EstimateTokens(s.Messages[fb.MsgIndex].Content)
 		s.Messages[fb.MsgIndex].Content = newContent
 		s.Messages[fb.MsgIndex].Update()
+		s.runningTokenCount += llm.EstimateTokens(newContent) - oldTokens
 		fb.Offset = offset
 		fb.EndLine = endLine
 		fb.Content = content
@@ -119,6 +123,7 @@ func (s *Session) UpsertFileBlock(toolCallID, path, content string, offset, endL
 	msg := &Message{Role: "tool", Content: newContent, Name: "read", ToolCallID: toolCallID, Enable: true}
 	msg.Update()
 	s.Messages = append(s.Messages, msg)
+	s.runningTokenCount += llm.EstimateTokens(newContent)
 	s.FileBlocks[path] = &FileBlock{Path: path, Offset: offset, EndLine: endLine, Content: content, TotalLines: totalLines, TotalBytes: totalBytes, MsgIndex: len(s.Messages) - 1}
 	return false
 }
@@ -151,19 +156,56 @@ func extractKeyInfo(content string) string {
 func (s *Session) GetID() string                   { return s.ID }
 func (s *Session) GetModel() string                { return s.Model }
 func (s *Session) GetSystemPrompt() string         { return s.SystemPrompt }
-func (s *Session) SetSystemPrompt(p string)        { s.SystemPrompt = p }
+func (s *Session) SetSystemPrompt(p string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.runningTokenCount += llm.EstimateTokens(p) - llm.EstimateTokens(s.SystemPrompt)
+	s.SystemPrompt = p
+	s.cacheMu.Lock()
+	s.cachedSystemJSON = nil
+	s.systemStateKey = ""
+	s.cacheMu.Unlock()
+}
 func (s *Session) GetTemperature() float64         { return s.Temperature }
-func (s *Session) SetTemperature(t float64)        { s.Temperature = t }
+// SetTemperature 设置 Temperature（线程安全）
+func (s *Session) SetTemperature(t float64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Temperature = t
+}
 func (s *Session) GetMaxTokens() int               { return s.MaxTokens }
-func (s *Session) SetMaxTokens(m int)              { s.MaxTokens = m }
+// SetMaxTokens 设置 MaxTokens（线程安全）
+func (s *Session) SetMaxTokens(m int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.MaxTokens = m
+}
 func (s *Session) GetMemoryIndex() string          { return s.MemoryIndex }
-func (s *Session) SetMemoryIndex(idx string)       { s.MemoryIndex = idx }
+// SetMemoryIndex 设置记忆索引（线程安全，并失效系统消息缓存）
+func (s *Session) SetMemoryIndex(idx string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.MemoryIndex = idx
+	s.cacheMu.Lock()
+	s.cachedSystemJSON = nil
+	s.systemStateKey = ""
+	s.cacheMu.Unlock()
+}
 func (s *Session) GetSummary() string              { return s.Summary }
 func (s *Session) GetMaxToolResultLen() int        { return s.MaxToolResultLen }
 func (s *Session) SetMaxToolResultLen(l int)       { s.MaxToolResultLen = l }
 func (s *Session) GetCompressThreshold() int       { return s.CompressThreshold }
 func (s *Session) SetCompressThreshold(t int)      { s.CompressThreshold = t }
 func (s *Session) GetInstructionsContent() string  { return s.InstructionsContent }
-func (s *Session) SetInstructionsContent(c string) { s.InstructionsContent = c }
+// SetInstructionsContent 设置指令文件内容（线程安全，并失效系统消息缓存）
+func (s *Session) SetInstructionsContent(c string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.InstructionsContent = c
+	s.cacheMu.Lock()
+	s.cachedSystemJSON = nil
+	s.systemStateKey = ""
+	s.cacheMu.Unlock()
+}
 func (s *Session) LockMessages()                   { s.mu.Lock() }
 func (s *Session) UnlockMessages()                 { s.mu.Unlock() }

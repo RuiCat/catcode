@@ -18,10 +18,10 @@ func (a *Architect) injectMemoryIndex() {
 	contextHint := a.extractContextHint()
 	index := a.memoryService.BuildIndex(contextHint)
 	if index == "" {
-		a.mainSession.MemoryIndex = ""
+		a.mainSession.SetMemoryIndex("")
 		return
 	}
-	a.mainSession.MemoryIndex = index
+	a.mainSession.SetMemoryIndex(index)
 }
 
 // extractContextHint 从最近消息中提取上下文提示（用于智能记忆选择）
@@ -54,7 +54,7 @@ func (a *Architect) InjectMemoryIndex() {
 // LoadHistory 从存储层消息行恢复对话历史到主会话
 // 保留已注册的工具，只替换消息列表
 func (a *Architect) LoadHistory(messages []*storage.MessageRow) {
-	a.mainSession.Messages = make([]*session.Message, 0, len(messages))
+	newMsgs := make([]*session.Message, 0, len(messages))
 	for _, m := range messages {
 		var toolCalls []llm.ToolCall
 		json.Unmarshal([]byte(m.ToolCallsJSON), &toolCalls)
@@ -74,8 +74,9 @@ func (a *Architect) LoadHistory(messages []*storage.MessageRow) {
 			Enable:           enabled,
 		}
 		msg.Update()
-		a.mainSession.Messages = append(a.mainSession.Messages, msg)
+		newMsgs = append(newMsgs, msg)
 	}
+	a.mainSession.RestoreMessages(newMsgs)
 }
 
 
